@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "description": "Model Context Protocol Server for Supabase",
   "main": "dist/index.js",
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
-    "dev": "node --loader ts-node/esm src/index.ts",
+    "dev": "ts-node src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc",
     "test": "jest",
@@ -30,8 +30,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.0",
-    "dotenv": "^16.3.1"
+    "@supabase/supabase-js": "^2.38.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",
