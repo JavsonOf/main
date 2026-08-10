@@ -1,8 +1,8 @@
 {
   "supabase": {
-    "url": "${SUPABASE_URL}",
-    "anonKey": "${SUPABASE_ANON_KEY}",
-    "serviceRoleKey": "${SUPABASE_SERVICE_ROLE_KEY}"
+    "url": "${https://bnsfdjhpquvvpklqcibf.supabase.co/rest/v1/}",
+    "anonKey": "${eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuc2ZkamhwcXV2dnBrbHFjaWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNzY5NTksImV4cCI6MjEwMTk1Mjk1OX0.bB3yTulT9d6JK3rR_Rfg9BySJQS0iVK8A1u5cebXtSo}",
+    "serviceRoleKey": "${eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuc2ZkamhwcXV2dnBrbHFjaWJmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjM3Njk1OSwiZXhwIjoyMTAxOTUyOTU5fQ.opsI8E-e08DbZGd3wqx19svX_w22MivGgeAr7Y8h2t4}"
   },
   "mcp": {
     "serverName": "supabase-server",
