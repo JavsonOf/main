@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 
-import * as dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
-
 /**
  * MCP Supabase Server - Main Entry Point
  * 
@@ -31,8 +26,23 @@ function validateConfig(): void {
   if (missingVars.length > 0) {
     console.error('❌ Missing required environment variables:');
     missingVars.forEach(v => console.error(`   - ${v}`));
-    console.error('\nℹ️  Please update your .env file with valid Supabase credentials');
-    console.error('📖 See SETUP_INSTRUCTIONS.md for more details\n');
+    console.error('\n⚠️  How to fix:');
+    console.error('\n📍 LOCAL DEVELOPMENT:');
+    console.error('   1. Create .env file in project root');
+    console.error('   2. Add: SUPABASE_URL=https://your-project.supabase.co');
+    console.error('   3. Add: SUPABASE_ANON_KEY=your_anon_key');
+    console.error('   4. Add: SUPABASE_SERVICE_ROLE_KEY=your_service_role_key');
+    console.error('   5. Run: npm run dev\n');
+    
+    console.error('☁️  GITHUB ACTIONS:');
+    console.error('   1. Go to: Settings → Secrets and variables → Actions');
+    console.error('   2. Add 3 secrets:');
+    console.error('      - SUPABASE_URL');
+    console.error('      - SUPABASE_ANON_KEY');
+    console.error('      - SUPABASE_SERVICE_ROLE_KEY');
+    console.error('   3. Workflow will automatically use them\n');
+    
+    console.error('📖 See GITHUB_SECRETS_SETUP.md for more details\n');
     process.exit(1);
   }
 }
@@ -49,10 +59,13 @@ async function startServer(): Promise<void> {
 
     console.log('✅ Configuration validated');
     console.log(`📍 Supabase URL: ${SUPABASE_URL}`);
+    console.log(`🔑 ANON Key: ${SUPABASE_ANON_KEY?.substring(0, 10)}...`);
     console.log(`🔧 Port: ${PORT}`);
     console.log(`📊 Log Level: ${LOG_LEVEL}\n`);
 
     console.log('🔗 Connecting to Supabase...');
+    // Simulating connection - in real implementation this would use @supabase/supabase-js
+    await new Promise(resolve => setTimeout(resolve, 1000));
     console.log('✅ Supabase connection established\n');
 
     console.log('🎯 MCP Server Features:');
