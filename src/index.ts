@@ -10,7 +10,7 @@
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || '3000';
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 
 /**
