@@ -28,14 +28,6 @@ jobs:
       - name: Build project
         run: npm run build
       
-      - name: List files (Debug)
-        run: |
-          echo "=== Checking .env file ==="
-          ls -la
-          echo ""
-          echo "=== Checking src directory ==="
-          ls -la src/
-      
       - name: Run MCP Supabase Server
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
