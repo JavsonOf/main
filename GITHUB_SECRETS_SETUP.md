@@ -28,19 +28,19 @@ https://bnsfdjhpquvvpklqcibf.supabase.co
 ### Secret #2: SUPABASE_ANON_KEY
 - Kliknij **New repository secret**
 - **Name:** `SUPABASE_ANON_KEY`
-- **Value:** 
-```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuc2ZkamhwcXV2dnBrbHFjaWJmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODYzNzY5NTksImV4cCI6MjEwMTk1Mjk1OX0.bB3yTulT9d6JK3rR_Rfg9BySJQS0iVK8A1u5cebXtSo
-```
+- **Value:** wklej swój `anon` key z Supabase Dashboard → Settings → API
+  (⚠️ REDACTED — poprzednia wersja tego pliku zawierała tu prawdziwy klucz
+  w postaci jawnego tekstu; ten klucz należy uznać za skompromitowany i
+  natychmiast zregenerować w Supabase Dashboard)
 - Kliknij **Add secret**
 
 ### Secret #3: SUPABASE_SERVICE_ROLE_KEY
 - Kliknij **New repository secret**
 - **Name:** `SUPABASE_SERVICE_ROLE_KEY`
-- **Value:**
-```
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJuc2ZkamhwcXV2dnBrbHFjaWJmIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NjM3Njk1OSwiZXhwIjoyMTAxOTUyOTU5fQ.opsI8E-e08DbZGd3wqx19svX_w22MivGgeAr7Y8h2t4
-```
+- **Value:** wklej swój `service_role` key z Supabase Dashboard → Settings → API
+  (⚠️ REDACTED — poprzednia wersja tego pliku zawierała tu prawdziwy klucz
+  w postaci jawnego tekstu; ten klucz daje pełny dostęp do bazy danych i
+  należy uznać go za skompromitowany — zregeneruj go natychmiast)
 - Kliknij **Add secret**
 
 ---
