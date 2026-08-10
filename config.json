@@ -1,0 +1,27 @@
+{
+  "supabase": {
+    "url": "${SUPABASE_URL}",
+    "anonKey": "${SUPABASE_ANON_KEY}",
+    "serviceRoleKey": "${SUPABASE_SERVICE_ROLE_KEY}"
+  },
+  "mcp": {
+    "serverName": "supabase-server",
+    "version": "1.0.0",
+    "capabilities": {
+      "database": true,
+      "storage": true,
+      "realtime": true,
+      "auth": true
+    }
+  },
+  "security": {
+    "allowedOrigins": ["*"],
+    "rateLimit": {
+      "requestsPerMinute": 60
+    }
+  },
+  "database": {
+    "poolSize": 10,
+    "maxQueriesPerConnection": 5
+  }
+}
