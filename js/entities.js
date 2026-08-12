@@ -148,6 +148,8 @@
         tag: 'conveyor', len: 6, dir: '+x', speed: 1.1, width: 0.72,
         color: '#39424e', beltColor: '#15191f', railColor: '#4a5563',
         height: 0.34, autoSpawn: true, spacing: 1.0,
+        /** Payload appearance pool; null = the default mixed crates. */
+        kinds: null,
         /** «STEP-2 HOOK» called with the item when it runs off the end. */
         onDeliver: null
       }, o));
@@ -166,9 +168,30 @@
       }
     }
 
+    _pool() { return (this.kinds && this.kinds.length) ? this.kinds : ITEM_KINDS; }
+
     _makeItem(s, kind) {
-      const k = kind || ITEM_KINDS[(Math.random() * ITEM_KINDS.length) | 0];
+      const pool = this._pool();
+      const k = kind || pool[(Math.random() * pool.length) | 0];
       return { s, kind: k, spin: Math.random() * Math.PI, wobble: Math.random() * 6.28 };
+    }
+
+    /** Swap the payload appearance — existing items re-roll in place. */
+    setKinds(kinds) {
+      this.kinds = kinds;
+      const pool = this._pool();
+      for (const it of this.items) it.kind = pool[(Math.random() * pool.length) | 0];
+    }
+
+    /** Re-space the payload; only rebuilds when the gap really changed. */
+    setSpacing(spacing) {
+      const s = Math.max(0.25, spacing);
+      if (Math.abs(s - this.spacing) < 0.05) return;
+      this.spacing = s;
+      if (!this.autoSpawn) return;
+      const phase = this.items.length ? this.items[0].s % s : 0;
+      this.items.length = 0;
+      for (let t = phase; t < this.len; t += s) this.items.push(this._makeItem(t));
     }
 
     /** «STEP-2 HOOK» push a specific payload onto the tail of the belt. */

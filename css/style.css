@@ -96,6 +96,8 @@ html, body{
   backdrop-filter:blur(6px);
 }
 .chip b{ color:var(--text); font-weight:600; }
+.chip.money{ border-color:rgba(255,200,50,.30); background:rgba(38,32,12,.72); }
+.chip.money b{ color:var(--accent); }
 
 /* ------------------------------------------------------------- hintbar */
 #hintbar{
@@ -123,5 +125,6 @@ html, body{
 /* ---------------------------------------------------------------- small */
 @media (max-width:720px){
   .brand-tag, #hintbar{ display:none; }
+  /* keep cash + rate, drop the diagnostics */
   .diag .chip:nth-child(n+3){ display:none; }
 }

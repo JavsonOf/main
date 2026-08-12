@@ -366,7 +366,9 @@
       const w = ctx.measureText(text).width + 10;
       ctx.fillStyle = opts.bg;
       ctx.beginPath();
-      ctx.roundRect(X - w / 2, Y - 8, w, 16, 4);
+      // roundRect is recent (Safari 16 / FF 112); fall back to a plain box
+      if (ctx.roundRect) ctx.roundRect(X - w / 2, Y - 8, w, 16, 4);
+      else ctx.rect(X - w / 2, Y - 8, w, 16);
       ctx.fill();
     }
     ctx.fillStyle = opts.color || 'rgba(214,226,240,.8)';

@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<!-- Browser zoom stays available; the canvas blocks pinch on itself via
+     touch-action so gameplay panning never fights the page. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>ISO FACTORY — Rendering Engine</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
@@ -13,7 +15,10 @@
        happens here. HUD layers float above it.
        ============================================================ -->
   <div id="stage">
-    <canvas id="factory-canvas"></canvas>
+    <canvas id="factory-canvas"
+            aria-label="Isometric factory floor: conveyor lines, robotic arms and loading docks">
+      Isometric factory view. This game requires canvas support.
+    </canvas>
 
     <!-- Scanline / vignette treatment (pure CSS, zero draw cost) -->
     <div class="fx-vignette" aria-hidden="true"></div>
@@ -27,6 +32,9 @@
         <span class="brand-tag">rendering core</span>
       </div>
       <div class="diag">
+        <span class="chip money"><b id="stat-cash">0</b> $</span>
+        <span class="chip"><b id="stat-rate">0</b> $/min</span>
+        <span class="chip"><b id="stat-level">1</b> lvl</span>
         <span class="chip"><b id="stat-fps">0</b> fps</span>
         <span class="chip"><b id="stat-draws">0</b> draws</span>
         <span class="chip"><b id="stat-ents">0</b> ents</span>
@@ -50,9 +58,15 @@
     </footer>
   </div>
 
-  <!-- Load order matters: math → primitives → entities → engine -->
+  <!-- Load order matters.
+       Renderer:  math → primitives → entities → engine
+       Economy:   content registry → mutable state → engine binding
+       binding.js boots last and joins the two halves together. -->
   <script src="js/iso.js"></script>
   <script src="js/entities.js"></script>
   <script src="js/engine.js"></script>
+  <script src="js/products.js"></script>
+  <script src="js/economy.js"></script>
+  <script src="js/binding.js"></script>
 </body>
 </html>

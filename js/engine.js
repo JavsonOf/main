@@ -11,10 +11,15 @@
      g.add(entity)             insert (returns the entity)
      g.remove(entity|id)       delete
      g.byTag('conveyor')       lookup by tag
-     g.pick(clientX, clientY)  screen px → {gx, gy} on the floor plane
+     g.pick(clientX, clientY)  screen px → {gx, gy, fx, fy} on the floor
+                               plane (integer tile + the exact float), or
+                               null when the point is off the plate
      g.paused = true|false
      g.onTick = (dt, time)=>{} fixed-step economy hook, 60 Hz
-     g.onRender = (ctx)=>{}    screen-space overlay hook (drawn last)
+     g.onRender = (ctx, viewW, viewH) => {}
+                               screen-space overlay hook, drawn last with
+                               the camera transform removed
+     g.onTileClick = ({gx, gy, fx, fy}) => {}   tap on a floor tile
    ===================================================================== */
 (function (global) {
   'use strict';
