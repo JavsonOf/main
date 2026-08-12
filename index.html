@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>ISO FACTORY — Rendering Engine</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+  <!-- ============================================================
+       STAGE — the canvas owns the full viewport. All world drawing
+       happens here. HUD layers float above it.
+       ============================================================ -->
+  <div id="stage">
+    <canvas id="factory-canvas"></canvas>
+
+    <!-- Scanline / vignette treatment (pure CSS, zero draw cost) -->
+    <div class="fx-vignette" aria-hidden="true"></div>
+    <div class="fx-scanlines" aria-hidden="true"></div>
+
+    <!-- ---------- Title strip ---------- -->
+    <header id="topbar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-name">ISO<em>FACTORY</em></span>
+        <span class="brand-tag">rendering core</span>
+      </div>
+      <div class="diag">
+        <span class="chip"><b id="stat-fps">0</b> fps</span>
+        <span class="chip"><b id="stat-draws">0</b> draws</span>
+        <span class="chip"><b id="stat-ents">0</b> ents</span>
+        <span class="chip"><b id="stat-zoom">1.00</b>×</span>
+      </div>
+    </header>
+
+    <!-- ---------- Reserved mount points for STEP 2 ----------
+         Economy panels / menus / audio controls attach here.
+         Intentionally empty in Step 1. -->
+    <div id="mount-left"   class="mount"></div>
+    <div id="mount-right"  class="mount"></div>
+    <div id="mount-bottom" class="mount"></div>
+
+    <footer id="hintbar">
+      <span><kbd>drag</kbd> pan</span>
+      <span><kbd>wheel</kbd> zoom</span>
+      <span><kbd>F</kbd> re-fit</span>
+      <span><kbd>G</kbd> grid</span>
+      <span><kbd>Space</kbd> pause</span>
+    </footer>
+  </div>
+
+  <!-- Load order matters: math → primitives → entities → engine -->
+  <script src="js/iso.js"></script>
+  <script src="js/entities.js"></script>
+  <script src="js/engine.js"></script>
+</body>
+</html>
