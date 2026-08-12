@@ -16,7 +16,8 @@
 
   const P = global.PRODUCTS;
   const { PRODUCTS: LIST, getProduct, getAxis, axisMultiplier, axisCost,
-    axisAffordable, xpForNext, OBJECTIVES, BALANCE, Format } = P;
+    axisAffordable, xpForNext, OBJECTIVES, BALANCE, Format,
+    BOOSTERS, BOOSTER_BY_ID } = P;
 
   const now = () => Date.now();
 
@@ -125,6 +126,7 @@
       };
 
       this.objectives = { done: {}, order: OBJECTIVES.map(o => o.id) };
+      this.boosters = {};                // id → {until, cdUntil} in ms
       this.offlineReport = null;
       this.lastSaved = now();
 
@@ -156,13 +158,31 @@
     /*  Income model                                                     */
     /* ================================================================= */
 
+    /**
+     * Product of every active booster touching `kind`. Expired entries
+     * simply stop counting — no timer, no cleanup pass, and offline
+     * settlement automatically runs unboosted because the stamps are stale
+     * by the time a save is reloaded.
+     */
+    boosterMultiplier(kind) {
+      const t = now();
+      let m = 1;
+      for (const id in this.boosters) {
+        const b = this.boosters[id], def = BOOSTER_BY_ID[id];
+        if (!def || !def.mult || !b || b.until <= t) continue;
+        if (def.mult[kind]) m *= def.mult[kind];
+      }
+      return m;
+    }
+
     /** Combined throughput multiplier from the three volume axes. */
     throughputMultiplier(id) {
       const l = this.lines[id];
       if (!l) return 0;
       return axisMultiplier('speed', l.speed) *
         axisMultiplier('supply', l.supply) *
-        axisMultiplier('robot', l.robot);
+        axisMultiplier('robot', l.robot) *
+        this.boosterMultiplier('throughput');
     }
 
     /** Units per minute produced by a line (0 when locked). */
@@ -176,7 +196,8 @@
     valuePerUnit(id) {
       const l = this.lines[id], p = getProduct(id);
       if (!l || !p) return 0;
-      return p.value * axisMultiplier('quality', l.quality) * this.globalMultiplier;
+      return p.value * axisMultiplier('quality', l.quality) *
+        this.globalMultiplier * this.boosterMultiplier('income');
     }
 
     /** ← the passive income calculator, per line. */
@@ -263,6 +284,7 @@
         cash += gain;
         xp += made * p.xp;
       }
+      xp *= this.boosterMultiplier('xp');
 
       this.cash += cash;
       this.stats.totalEarned += cash;
@@ -382,6 +404,60 @@
     }
 
     /* ================================================================= */
+    /*  Boosters                                                         */
+    /* ================================================================= */
+    /** Everything the BOOSTERS modal needs to draw one row. */
+    boosterView(id) {
+      const def = BOOSTER_BY_ID[id];
+      if (!def) return null;
+      const b = this.boosters[id] || { until: 0, cdUntil: 0 };
+      const t = now();
+      const activeMs = Math.max(0, b.until - t);
+      const coolMs = Math.max(0, b.cdUntil - t);
+      return {
+        id, def,
+        active: activeMs > 0,
+        remaining: activeMs / 1000,
+        activeProgress: def.duration ? activeMs / (def.duration * 1000) : 0,
+        cooling: coolMs > 0,
+        cooldown: coolMs / 1000,
+        cooldownProgress: def.cooldown ? 1 - coolMs / (def.cooldown * 1000) : 1,
+        ready: coolMs <= 0
+      };
+    }
+
+    boosterViews() { return BOOSTERS.map(b => this.boosterView(b.id)); }
+
+    /**
+     * Fire a booster. Instant ones pay a lump sum of the CURRENT rate;
+     * timed ones stamp an expiry. Returns a result object rather than a
+     * bare bool so the UI can say why nothing happened.
+     */
+    activateBooster(id) {
+      const def = BOOSTER_BY_ID[id];
+      if (!def) return { ok: false, reason: 'unknown' };
+      const view = this.boosterView(id);
+      if (!view.ready) return { ok: false, reason: 'cooldown', wait: view.cooldown };
+
+      const t = now();
+      const entry = this.boosters[id] || (this.boosters[id] = { until: 0, cdUntil: 0 });
+      entry.cdUntil = t + def.cooldown * 1000;
+
+      let granted = 0;
+      if (def.instant) {
+        granted = this.incomePerMinute() * def.instant.minutes;
+        this.cash += granted;
+        this.stats.totalEarned += granted;
+      } else {
+        entry.until = t + def.duration * 1000;
+      }
+
+      this.emit('booster', { id, def, granted, until: entry.until });
+      this.checkObjectives();
+      return { ok: true, granted, until: entry.until };
+    }
+
+    /* ================================================================= */
     /*  Objectives                                                       */
     /* ================================================================= */
     /** The three-deep active window, in chain order. */
@@ -453,6 +529,7 @@
         gm: this.globalMultiplier,
         lines,
         obj: this.objectives.done,
+        boost: this.boosters,
         stats: this.stats
       };
     }
@@ -533,6 +610,15 @@
         const done = {};
         for (const o of OBJECTIVES) if (d.obj[o.id]) done[o.id] = d.obj[o.id];
         this.objectives.done = done;
+      }
+      if (d.boost && typeof d.boost === 'object') {
+        const b = {};
+        for (const def of BOOSTERS) {
+          const s = d.boost[def.id];
+          if (!s) continue;
+          b[def.id] = { until: num(s.until, 0), cdUntil: num(s.cdUntil, 0) };
+        }
+        this.boosters = b;
       }
       if (d.stats && typeof d.stats === 'object') {
         for (const k in this.stats) {

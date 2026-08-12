@@ -5,68 +5,144 @@
 <!-- Browser zoom stays available; the canvas blocks pinch on itself via
      touch-action so gameplay panning never fights the page. -->
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>ISO FACTORY — Rendering Engine</title>
+<meta name="theme-color" content="#070a0e" />
+<title>ISO FACTORY</title>
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
 
-  <!-- ============================================================
-       STAGE — the canvas owns the full viewport. All world drawing
-       happens here. HUD layers float above it.
-       ============================================================ -->
-  <div id="stage">
-    <canvas id="factory-canvas"
-            aria-label="Isometric factory floor: conveyor lines, robotic arms and loading docks">
-      Isometric factory view. This game requires canvas support.
-    </canvas>
+<div id="stage">
+  <!-- ============================ WORLD ============================ -->
+  <canvas id="factory-canvas"
+          aria-label="Isometric factory floor: conveyor lines, robotic arms and loading docks">
+    Isometric factory view. This game requires canvas support.
+  </canvas>
 
-    <!-- Scanline / vignette treatment (pure CSS, zero draw cost) -->
-    <div class="fx-vignette" aria-hidden="true"></div>
-    <div class="fx-scanlines" aria-hidden="true"></div>
+  <div class="fx-vignette" aria-hidden="true"></div>
+  <div class="fx-scanlines" aria-hidden="true"></div>
 
-    <!-- ---------- Title strip ---------- -->
-    <header id="topbar">
+  <!-- ============================ HEADER =========================== -->
+  <header id="hud">
+    <div class="hud-bar">
       <div class="brand">
         <span class="brand-mark"></span>
         <span class="brand-name">ISO<em>FACTORY</em></span>
-        <span class="brand-tag">rendering core</span>
       </div>
-      <div class="diag">
-        <span class="chip money"><b id="stat-cash">0</b> $</span>
-        <span class="chip"><b id="stat-rate">0</b> $/min</span>
-        <span class="chip"><b id="stat-level">1</b> lvl</span>
-        <span class="chip"><b id="stat-fps">0</b> fps</span>
-        <span class="chip"><b id="stat-draws">0</b> draws</span>
-        <span class="chip"><b id="stat-ents">0</b> ents</span>
-        <span class="chip"><b id="stat-zoom">1.00</b>×</span>
+
+      <div class="wallet">
+        <b id="ui-cash">$0</b>
+        <span id="ui-rate">$0/min</span>
       </div>
-    </header>
 
-    <!-- ---------- Reserved mount points for STEP 2 ----------
-         Economy panels / menus / audio controls attach here.
-         Intentionally empty in Step 1. -->
-    <div id="mount-left"   class="mount"></div>
-    <div id="mount-right"  class="mount"></div>
-    <div id="mount-bottom" class="mount"></div>
+      <div class="level" id="ui-level-wrap" title="Player level">
+        <span class="level-badge">LV <b id="ui-level">1</b></span>
+        <span class="level-meter"><i id="ui-xp"></i></span>
+      </div>
 
-    <footer id="hintbar">
-      <span><kbd>drag</kbd> pan</span>
-      <span><kbd>wheel</kbd> zoom</span>
-      <span><kbd>F</kbd> re-fit</span>
-      <span><kbd>G</kbd> grid</span>
-      <span><kbd>Space</kbd> pause</span>
-    </footer>
+      <button class="icon-btn" id="ui-mute" type="button"
+              aria-pressed="false" title="Mute (M)">
+        <span id="ui-mute-icon">🔊</span>
+      </button>
+    </div>
+
+    <!-- objective banner -->
+    <div class="objective" id="ui-objective">
+      <span class="obj-tag">OBJECTIVE</span>
+      <span class="obj-name" id="ui-obj-name">—</span>
+      <span class="obj-meter"><i id="ui-obj-fill"></i></span>
+      <span class="obj-count" id="ui-obj-count"></span>
+      <span class="obj-reward" id="ui-obj-reward"></span>
+    </div>
+
+    <!-- active booster pills -->
+    <div class="boost-strip" id="ui-boost-strip"></div>
+  </header>
+
+  <!-- diagnostics, toggled with D -->
+  <div class="diag" id="ui-diag" hidden>
+    <span class="chip"><b id="stat-fps">0</b> fps</span>
+    <span class="chip"><b id="stat-draws">0</b> draws</span>
+    <span class="chip"><b id="stat-ents">0</b> ents</span>
+    <span class="chip"><b id="stat-zoom">1.00</b>×</span>
   </div>
 
-  <!-- Load order matters.
-       Renderer:  math → primitives → entities → engine
-       Economy:   content registry → mutable state → engine binding
-       binding.js boots last and joins the two halves together. -->
-  <script src="js/iso.js"></script>
-  <script src="js/entities.js"></script>
-  <script src="js/engine.js"></script>
-  <script src="js/products.js"></script>
-  <script src="js/economy.js"></script>
-  <script src="js/binding.js"></script>
+  <!-- ======================== BOTTOM SHEET ========================= -->
+  <section id="sheet" class="sheet" aria-live="polite">
+    <!-- ---------- PRODUCTS ---------- -->
+    <div class="panel" id="panel-products" data-panel="products">
+      <div class="panel-head">
+        <h2>Products</h2>
+        <span class="panel-note" id="ui-lines-note">1 / 8 lines</span>
+      </div>
+      <div class="rows" id="ui-product-rows"></div>
+    </div>
+
+    <!-- ---------- FACTORY ---------- -->
+    <div class="panel" id="panel-factory" data-panel="factory" hidden>
+      <div class="panel-head">
+        <h2 id="ui-factory-title">Factory</h2>
+        <div class="buyamt" id="ui-buyamt" role="group" aria-label="Buy amount">
+          <button type="button" data-amt="1" class="on">×1</button>
+          <button type="button" data-amt="10">×10</button>
+          <button type="button" data-amt="max">MAX</button>
+        </div>
+      </div>
+      <div class="line-summary" id="ui-line-summary"></div>
+      <div class="rows" id="ui-axis-rows"></div>
+    </div>
+  </section>
+
+  <!-- ============================= TABS ============================ -->
+  <nav id="tabs" aria-label="Main navigation">
+    <button class="tab" type="button" data-tab="products">
+      <span class="tab-ico">▦</span><span>PRODUCTS</span>
+    </button>
+    <button class="tab" type="button" data-tab="factory">
+      <span class="tab-ico">⚙</span><span>FACTORY</span>
+    </button>
+    <button class="tab" type="button" data-tab="boosters">
+      <span class="tab-ico">⚡</span><span>BOOSTERS</span>
+    </button>
+  </nav>
+
+  <!-- =========================== MODALS ============================ -->
+  <div class="modal-layer" id="modal-boosters" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="boost-title">
+      <div class="modal-head">
+        <h2 id="boost-title">⚡ Boosters</h2>
+        <button class="icon-btn" type="button" data-close>✕</button>
+      </div>
+      <p class="modal-sub">Free surges on a cooldown. Stack them.</p>
+      <div class="rows" id="ui-booster-rows"></div>
+    </div>
+  </div>
+
+  <div class="modal-layer" id="modal-offline" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="off-title">
+      <div class="modal-head">
+        <h2 id="off-title">Welcome back</h2>
+      </div>
+      <p class="modal-sub" id="ui-offline-away">—</p>
+      <div class="offline-take" id="ui-offline-amount">$0</div>
+      <p class="modal-fine" id="ui-offline-fine"></p>
+      <button class="cta wide" type="button" id="ui-offline-collect">COLLECT</button>
+    </div>
+  </div>
+
+  <div id="toasts" aria-live="polite"></div>
+</div>
+
+<!-- Load order matters.
+     Renderer:  math → primitives → entities → engine
+     Economy:   content registry → mutable state → engine binding
+     Shell:     audio synth → UI overlay (boots last, wires everything) -->
+<script src="js/iso.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/products.js"></script>
+<script src="js/economy.js"></script>
+<script src="js/binding.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/ui.js"></script>
 </body>
 </html>

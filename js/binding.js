@@ -59,12 +59,6 @@
       this.target = { beltSpeed: 1.1, armCycle: 3.4, spacing: 1.4, truckWait: 4.6 };
 
       this.lineId = state.selectedLine;
-      this._hudClock = 0;
-      this._hud = {
-        cash: document.getElementById('stat-cash'),
-        rate: document.getElementById('stat-rate'),
-        level: document.getElementById('stat-level')
-      };
 
       // re-derive whenever anything economic moves
       this._off = state.on('change', () => this.sync());
@@ -154,20 +148,6 @@
         this.arms[i].cycle = this.armCycle * (1 + i * 0.06);
       }
       for (let i = 0; i < this.trucks.length; i++) this.trucks[i].wait = t.truckWait;
-
-      this._updateHud(dt);
-    }
-
-    /* ------------------------------------------------------------- hud */
-    /** Diagnostics chips only — the real panels arrive in Step 3. */
-    _updateHud(dt) {
-      this._hudClock += dt;
-      if (this._hudClock < 0.2) return;
-      this._hudClock = 0;
-      const st = this.state, h = this._hud;
-      if (h.cash) h.cash.textContent = Format.num(st.cash);
-      if (h.rate) h.rate.textContent = Format.num(st.incomePerMinute());
-      if (h.level) h.level.textContent = st.level;
     }
   }
 

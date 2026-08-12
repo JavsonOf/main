@@ -338,6 +338,44 @@
   ];
 
   /* =================================================================== */
+  /*  Boosters — short, free, cooldown-gated surges                      */
+  /* =================================================================== */
+  /**
+   * `mult` keys fold into the income model at three different points:
+   *   throughput → units/min (so the belts visibly speed up too)
+   *   income     → $/unit
+   *   xp         → xp/unit
+   * `instant` pays a lump sum of the current rate instead of running a timer.
+   * Cooldown starts on activation, so a booster's real cadence is
+   * cooldown, not cooldown + duration.
+   */
+  const BOOSTERS = [
+    {
+      id: 'overdrive', name: 'Overdrive', icon: '⚡',
+      desc: '2× income for 60s', tone: '#ffc832',
+      mult: { income: 2 }, duration: 60, cooldown: 300
+    },
+    {
+      id: 'turbo', name: 'Belt Turbo', icon: '🏭',
+      desc: '1.5× throughput for 90s', tone: '#38d9d0',
+      mult: { throughput: 1.5 }, duration: 90, cooldown: 360
+    },
+    {
+      id: 'surge', name: 'XP Surge', icon: '⭐',
+      desc: '3× XP for 120s', tone: '#b892ff',
+      mult: { xp: 3 }, duration: 120, cooldown: 420
+    },
+    {
+      id: 'shipment', name: 'Rush Shipment', icon: '💰',
+      desc: 'Bank 30 min of income instantly', tone: '#7dffb0',
+      instant: { minutes: 30 }, cooldown: 600
+    }
+  ];
+
+  const BOOSTER_BY_ID = {};
+  BOOSTERS.forEach(b => { BOOSTER_BY_ID[b.id] = b; });
+
+  /* =================================================================== */
   /*  Balance constants — one place to tune the feel                     */
   /* =================================================================== */
   const BALANCE = {
@@ -393,6 +431,7 @@
     PRODUCTS, BY_ID, getProduct,
     AXES, AXIS_BY_ID, getAxis, axisMultiplier, axisCost, axisBulkCost,
     axisAffordable, STAR_VALUE, STAR_COST,
-    xpForNext, xpTotalTo, LEVEL_CAP, OBJECTIVES, BALANCE, Format
+    xpForNext, xpTotalTo, LEVEL_CAP, OBJECTIVES, BALANCE, Format,
+    BOOSTERS, BOOSTER_BY_ID
   };
 })(window);

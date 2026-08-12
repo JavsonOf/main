@@ -3,19 +3,28 @@
 A browser game built on a hand-rolled HTML5 Canvas isometric renderer. No
 libraries, no build step — open `index.html`.
 
-**Step 1: the rendering engine. Step 2: the idle economy.** Menus and audio
-are still to come; they attach to the hooks listed below.
+**Step 1: rendering engine. Step 2: idle economy. Step 3: shell, UI and
+audio.** The game is complete and playable.
 
 ```
-index.html        markup + reserved UI mount points
-css/style.css     dark industrial theme, HUD chrome
+index.html        the game (loads the modules below)
+isofactory.html   single-file build — no server, no network, no deps
+build.js          regenerates isofactory.html from the modules
+
+css/style.css     dark industrial theme, full shell layout
 js/iso.js         projection math, camera, colour, draw primitives
 js/entities.js    every procedural prop (belts, arms, trucks, props)
 js/engine.js      render list, sim loop, input, factory layout
 js/products.js    product registry, upgrade axes, level curve, objectives
 js/economy.js     mutable state: income, offline, autosave, unlocks
 js/binding.js     the seam: economy → renderer
+js/audio.js       procedural Web Audio synthesiser
+js/ui.js          header, tabs, panels, modals, listeners, floaters
 ```
+
+Open `index.html` for the modular version, or hand someone
+`isofactory.html` — one file, 181 KB, opens straight off the filesystem
+with zero network requests. Run `node build.js` after editing any module.
 
 ## Coordinate contract
 
@@ -124,7 +133,54 @@ An ordered chain of 18, three active at a time, each declarative
 (`progress(state) → number` + target), so the tracker never grows a switch
 statement and any of them renders generically.
 
-## Step-3 attachment points
+## The shell (Step 3)
+
+### Layout
+
+A fixed header (money, $/min, level + XP meter, mute), an objective banner
+that tracks the head of the chain, active-booster pills, a bottom sheet
+holding the **PRODUCTS** and **FACTORY** panels, a **BOOSTERS** modal, a
+welcome-back modal, toasts, and floating `+$` text drawn on the canvas
+itself through the screen-space pass Step 1 reserved.
+
+Two rules keep a 60 fps canvas and a DOM UI out of each other's way:
+
+1. **Nothing rebuilds per frame.** Rows are built once and cached by id;
+   the 10 Hz refresh only writes `textContent` and bar widths. DOM is
+   rebuilt only on structural change.
+2. **The UI polls, the state pushes.** Continuous values (cash, rate, XP,
+   cooldowns) are read on a timer; discrete events (upgrade, unlock,
+   levelup, objective, booster) arrive as state events and drive sound,
+   toasts and re-renders.
+
+### Boosters
+
+Free, cooldown-gated surges: Overdrive (2× income), Belt Turbo (1.5×
+throughput — the belts visibly speed up), XP Surge (3× XP), Rush Shipment
+(banks 30 min of income instantly). Multipliers fold into the income model
+at three different points and expire by timestamp, so offline settlement
+automatically runs unboosted — a stale stamp simply stops counting.
+
+### Audio
+
+Everything is synthesised at call time from oscillators and noise buffers
+— no files. Three things make it survive a real game: the context is built
+**lazily on the first gesture** (browsers refuse otherwise) and resumed on
+every play; every cue declares a **minimum gap** and silently drops calls
+inside it, so a 10× speed upgrade doesn't become a buzzsaw; and everything
+runs through one gain into a **compressor** with a generated impulse
+response, so a level-up landing on four assembly clicks ducks instead of
+clipping. Money blips walk up a pentatonic run when they cluster.
+
+Cues: assembly, money, truck, levelup, unlock, upgrade, objective, click,
+error. Mute persists to `localStorage`.
+
+### Controls
+
+`drag` pan · `wheel` zoom · `1`/`2`/`3` panels · `M` mute · `D` diagnostics
+· `F` re-fit · `G` grid · `Space` pause · `Esc` close
+
+## Extension points
 
 Globals after boot: `GAME` (engine), `STATE` (economy), `VIEW` (binding).
 
@@ -158,6 +214,10 @@ properties, and `binding.js` already maps the economy onto them. HTML mount
 points `#mount-left`, `#mount-right`, `#mount-bottom` are in place for the
 UI panels.
 
-## Controls
+## Testing
 
-drag = pan · wheel = zoom · `F` = re-fit · `G` = grid · `Space` = pause
+Driven headlessly with Playwright: 138 checks across the engine, the
+economy and the shell — projection round-trips, depth ordering, income
+identities, cost curves, offline payout at 3 h / 24 h-capped / clock-skew,
+corrupt saves, every UI interaction, and each audio cue synthesising.
+Balance is verified by simulating 30 days of greedy optimal play.
