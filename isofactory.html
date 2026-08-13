@@ -1,0 +1,4790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!-- Built by build.js from the modules in js/ — do not edit by hand.
+     Sources: js/iso.js, js/entities.js, js/engine.js, js/products.js, js/economy.js, js/binding.js, js/audio.js, js/ui.js -->
+<meta charset="utf-8" />
+<!-- Browser zoom stays available; the canvas blocks pinch on itself via
+     touch-action so gameplay panning never fights the page. -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#070a0e" />
+<title>ISO FACTORY</title>
+<style>
+/* =====================================================================
+   ISO FACTORY — dark industrial theme
+   Canvas fills the viewport; the shell floats above it. Layout is
+   bottom-anchored so the factory stays visible while panels are open,
+   and thumbs reach the controls on a phone.
+   ===================================================================== */
+
+:root{
+  --bg-void:      #070a0e;
+  --bg-panel:     rgba(14, 19, 27, .92);
+  --bg-row:       rgba(255,255,255,.035);
+  --bg-row-hi:    rgba(255,255,255,.07);
+  --line:         rgba(120, 160, 200, .14);
+  --line-strong:  rgba(140, 190, 240, .30);
+  --text:         #d6e2f0;
+  --text-dim:     #8195ab;
+  --text-faint:   #5b6b7d;
+  --accent:       #ffc832;
+  --accent-dim:   rgba(255, 200, 50, .16);
+  --cyan:         #38d9d0;
+  --good:         #7dffb0;
+  --warn:         #ffb347;
+  --bad:          #ff5f56;
+  --r:            12px;
+  --font-ui:      "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono:    "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+  --sheet-h:      min(46vh, 380px);
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+
+/* A class that sets `display` outranks the UA rule for [hidden], which
+   would otherwise leave invisible full-screen layers swallowing clicks. */
+[hidden]{ display:none !important; }
+
+html, body{
+  width:100%; height:100%; overflow:hidden;
+  background:var(--bg-void); color:var(--text);
+  font-family:var(--font-ui);
+  -webkit-font-smoothing:antialiased;
+  user-select:none; -webkit-tap-highlight-color:transparent;
+}
+
+button{ font:inherit; color:inherit; background:none; border:none; cursor:pointer; }
+h2{ font-size:13px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+
+/* ---------------------------------------------------------------- stage */
+#stage{
+  position:fixed; inset:0;
+  background:radial-gradient(1200px 800px at 50% 38%, #131c27 0%, #0a0e14 62%, #06090d 100%);
+}
+#factory-canvas{
+  position:absolute; inset:0; width:100%; height:100%;
+  display:block; cursor:grab; touch-action:none;
+}
+#factory-canvas.dragging{ cursor:grabbing; }
+
+.fx-vignette{
+  position:absolute; inset:0; pointer-events:none;
+  background:radial-gradient(circle at 50% 45%,
+              rgba(0,0,0,0) 42%, rgba(0,0,0,.42) 78%, rgba(0,0,0,.72) 100%);
+}
+.fx-scanlines{
+  position:absolute; inset:0; pointer-events:none; opacity:.22;
+  background:repeating-linear-gradient(to bottom,
+              rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+  mix-blend-mode:overlay;
+}
+
+/* =========================================================== HEADER === */
+#hud{
+  position:absolute; top:0; left:0; right:0;
+  padding:10px 12px 0; pointer-events:none;
+  display:flex; flex-direction:column; gap:8px;
+  background:linear-gradient(to bottom, rgba(6,9,13,.94), rgba(6,9,13,0));
+}
+
+.hud-bar{ display:flex; align-items:center; gap:12px; }
+
+.brand{ display:flex; align-items:center; gap:8px; }
+.brand-mark{
+  width:11px; height:11px; transform:rotate(45deg); background:var(--accent);
+  box-shadow:0 0 14px var(--accent), inset 0 0 0 2px rgba(0,0,0,.35);
+}
+.brand-name{ font-size:13px; font-weight:800; letter-spacing:.16em; }
+.brand-name em{ font-style:normal; color:var(--accent); }
+
+/* ---- wallet ---- */
+.wallet{ display:flex; flex-direction:column; margin-left:auto; text-align:right; line-height:1.15; }
+.wallet b{
+  font-family:var(--font-mono); font-size:20px; font-weight:700;
+  color:var(--accent); letter-spacing:.02em;
+  text-shadow:0 0 22px rgba(255,200,50,.35);
+}
+.wallet span{ font-family:var(--font-mono); font-size:10.5px; color:var(--text-dim); }
+
+/* ---- level ---- */
+.level{ display:flex; flex-direction:column; gap:4px; align-items:flex-end; }
+.level-badge{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.12em;
+  color:var(--text-dim); padding:3px 8px; border-radius:999px;
+  background:var(--bg-panel); border:1px solid var(--line);
+}
+.level-badge b{ color:var(--text); font-size:12px; }
+.level-meter{
+  width:74px; height:4px; border-radius:2px; overflow:hidden;
+  background:rgba(255,255,255,.09);
+}
+.level-meter i{
+  display:block; height:100%; width:0;
+  background:linear-gradient(90deg, var(--cyan), #8ad0ff);
+  transition:width .3s ease;
+}
+.level.pulse .level-badge{
+  animation:pop .9s ease; border-color:var(--accent); color:var(--accent);
+}
+@keyframes pop{ 0%{transform:scale(1)} 30%{transform:scale(1.22)} 100%{transform:scale(1)} }
+
+.icon-btn{
+  pointer-events:auto; width:34px; height:34px; border-radius:10px;
+  display:grid; place-items:center; font-size:15px;
+  background:var(--bg-panel); border:1px solid var(--line);
+  transition:border-color .15s, transform .1s;
+}
+.icon-btn:hover{ border-color:var(--line-strong); }
+.icon-btn:active{ transform:scale(.94); }
+
+/* ---- objective banner ---- */
+.objective{
+  pointer-events:auto; display:flex; align-items:center; gap:10px;
+  padding:7px 12px; border-radius:var(--r);
+  background:var(--bg-panel); border:1px solid var(--line);
+  backdrop-filter:blur(8px);
+}
+.obj-tag{
+  font-family:var(--font-mono); font-size:9px; letter-spacing:.18em;
+  color:var(--accent); padding:2px 6px; border-radius:4px;
+  background:var(--accent-dim); flex:none;
+}
+.obj-name{
+  font-size:12px; font-weight:600; flex:1 1 auto;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.obj-meter{
+  flex:0 0 90px; height:5px; border-radius:3px; overflow:hidden;
+  background:rgba(255,255,255,.09);
+}
+.obj-meter i{
+  display:block; height:100%; width:0;
+  background:linear-gradient(90deg, var(--accent), #ffe08a);
+  transition:width .3s ease;
+}
+.obj-count{ font-family:var(--font-mono); font-size:10px; color:var(--text-dim); flex:none; }
+.obj-reward{ font-family:var(--font-mono); font-size:10px; color:var(--good); flex:none; }
+
+/* ---- active booster pills ---- */
+.boost-strip{ display:flex; gap:6px; flex-wrap:wrap; }
+.boost-pill{
+  font-family:var(--font-mono); font-size:10px; letter-spacing:.04em;
+  padding:3px 9px; border-radius:999px; color:var(--c, var(--accent));
+  background:color-mix(in srgb, var(--c, #ffc832) 14%, transparent);
+  border:1px solid color-mix(in srgb, var(--c, #ffc832) 42%, transparent);
+  animation:fadein .25s ease;
+}
+.boost-pill b{ color:var(--text); }
+
+/* ---- diagnostics ---- */
+.diag{ position:absolute; top:56px; left:12px; display:flex; gap:6px; }
+.chip{
+  font-family:var(--font-mono); font-size:10px; color:var(--text-dim);
+  padding:3px 8px; border-radius:999px;
+  background:var(--bg-panel); border:1px solid var(--line);
+}
+.chip b{ color:var(--text); }
+
+/* ============================================================ SHEET === */
+.sheet{
+  position:absolute; left:50%; bottom:60px;
+  width:min(760px, calc(100% - 20px));
+  transform:translate(-50%, calc(100% + 70px));
+  height:var(--sheet-h);
+  display:flex; flex-direction:column;
+  background:var(--bg-panel); backdrop-filter:blur(14px);
+  border:1px solid var(--line); border-radius:16px;
+  box-shadow:0 -18px 50px rgba(0,0,0,.55);
+  transition:transform .28s cubic-bezier(.22,.9,.3,1), opacity .2s;
+  opacity:0; pointer-events:none; overflow:hidden;
+}
+.sheet.open{ transform:translate(-50%, 0); opacity:1; pointer-events:auto; }
+
+.panel{ display:flex; flex-direction:column; min-height:0; height:100%; }
+.panel[hidden]{ display:none; }
+
+.panel-head{
+  display:flex; align-items:center; gap:10px;
+  padding:12px 14px 10px; border-bottom:1px solid var(--line);
+}
+.panel-head h2{ margin-right:auto; }
+.panel-note{ font-family:var(--font-mono); font-size:10px; color:var(--text-dim); }
+
+.rows{ overflow-y:auto; overscroll-behavior:contain; padding:8px; display:flex; flex-direction:column; gap:6px; }
+.rows::-webkit-scrollbar{ width:8px; }
+.rows::-webkit-scrollbar-thumb{ background:rgba(255,255,255,.12); border-radius:4px; }
+
+/* ---- buy amount selector ---- */
+.buyamt{ display:flex; gap:2px; padding:2px; border-radius:9px; background:rgba(0,0,0,.35); border:1px solid var(--line); }
+.buyamt button{
+  font-family:var(--font-mono); font-size:10.5px; letter-spacing:.06em;
+  padding:4px 10px; border-radius:7px; color:var(--text-dim);
+}
+.buyamt button.on{ background:var(--accent); color:#1a1405; font-weight:700; }
+
+/* ---- product rows ---- */
+.prow{
+  display:flex; align-items:center; gap:11px; text-align:left;
+  padding:9px 11px; border-radius:10px;
+  background:var(--bg-row); border:1px solid transparent;
+  transition:background .15s, border-color .15s;
+}
+.prow:hover{ background:var(--bg-row-hi); }
+.prow.active{ border-color:var(--line-strong); background:rgba(255,200,50,.07); }
+.prow.locked{ opacity:.55; }
+.prow.ready{ opacity:1; border-color:rgba(255,200,50,.45); }
+
+.pswatch{
+  width:12px; height:12px; flex:none; transform:rotate(45deg);
+  background:var(--c); border-radius:2px;
+  box-shadow:0 0 12px color-mix(in srgb, var(--c) 60%, transparent);
+}
+.pmain{ display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+.pname{ font-size:13px; font-weight:600; display:flex; align-items:center; gap:7px; }
+.pstars{ font-style:normal; font-size:9px; color:var(--accent); letter-spacing:.05em; }
+.psub{
+  font-family:var(--font-mono); font-size:10px; color:var(--text-dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.pright{ display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex:none; }
+.prate{ font-family:var(--font-mono); font-size:11px; color:var(--good); }
+.pcta{
+  font-family:var(--font-mono); font-size:9.5px; letter-spacing:.1em;
+  padding:3px 9px; border-radius:6px; color:var(--text-dim);
+  border:1px solid var(--line);
+}
+.prow.ready .pcta{ background:var(--accent); color:#1a1405; font-weight:700; border-color:transparent; }
+.prow.active .pcta{ color:var(--accent); border-color:rgba(255,200,50,.4); }
+
+/* ---- line summary ---- */
+.line-summary{
+  display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;
+  padding:10px 12px; border-bottom:1px solid var(--line);
+}
+.line-summary span{
+  display:flex; flex-direction:column; gap:2px;
+  font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--text-faint);
+}
+.line-summary b{ font-family:var(--font-mono); font-size:13px; color:var(--text); letter-spacing:0; }
+
+/* ---- axis rows ---- */
+.arow{
+  padding:10px 12px; border-radius:10px;
+  background:var(--bg-row); border:1px solid transparent;
+}
+.arow.maxed{ border-color:rgba(125,255,176,.28); }
+.ahead{ display:flex; align-items:baseline; gap:8px; }
+.aname{ font-size:12.5px; font-weight:600; }
+.alvl{ font-family:var(--font-mono); font-size:10.5px; color:var(--accent); margin-left:auto; }
+.adesc{ font-size:10px; color:var(--text-faint); margin-top:2px; }
+.ameter{ height:5px; border-radius:3px; background:rgba(255,255,255,.08); overflow:hidden; margin:8px 0 7px; }
+.ameter i{
+  display:block; height:100%; width:0;
+  background:linear-gradient(90deg, var(--cyan), var(--accent));
+  transition:width .25s ease;
+}
+.afoot{ display:flex; align-items:center; gap:10px; }
+.amult{ font-family:var(--font-mono); font-size:10.5px; color:var(--text-dim); }
+.abuy{
+  margin-left:auto; font-family:var(--font-mono); font-size:11px;
+  padding:6px 13px; border-radius:8px; color:var(--text-dim);
+  background:rgba(255,255,255,.05); border:1px solid var(--line);
+  transition:transform .1s, background .15s;
+}
+.abuy.afford{ background:var(--accent); color:#1a1405; font-weight:700; border-color:transparent; }
+.abuy:active{ transform:scale(.95); }
+.abuy:disabled{ opacity:.5; cursor:default; }
+
+/* ============================================================= TABS === */
+#tabs{
+  position:absolute; left:50%; bottom:10px; transform:translateX(-50%);
+  display:flex; gap:6px; padding:5px;
+  background:var(--bg-panel); backdrop-filter:blur(10px);
+  border:1px solid var(--line); border-radius:14px;
+  box-shadow:0 10px 30px rgba(0,0,0,.5);
+}
+.tab{
+  display:flex; align-items:center; gap:7px;
+  padding:9px 16px; border-radius:10px;
+  font-size:10.5px; font-weight:700; letter-spacing:.12em; color:var(--text-dim);
+  transition:background .15s, color .15s, transform .1s;
+}
+.tab .tab-ico{ font-size:12px; }
+.tab:hover{ color:var(--text); background:rgba(255,255,255,.05); }
+.tab.on{ background:var(--accent); color:#1a1405; }
+.tab:active{ transform:scale(.96); }
+
+/* =========================================================== MODALS === */
+.modal-layer{
+  position:absolute; inset:0; z-index:20;
+  display:grid; place-items:center; padding:16px;
+  background:rgba(4,7,11,.72); backdrop-filter:blur(4px);
+  opacity:0; transition:opacity .18s ease;
+}
+.modal-layer.in{ opacity:1; }
+.modal{
+  width:min(520px, 100%); max-height:80vh; overflow:hidden;
+  display:flex; flex-direction:column;
+  background:var(--bg-panel); border:1px solid var(--line-strong);
+  border-radius:18px; box-shadow:0 24px 70px rgba(0,0,0,.6);
+  transform:translateY(14px) scale(.98); transition:transform .22s cubic-bezier(.22,.9,.3,1);
+}
+.modal.narrow{ width:min(380px, 100%); text-align:center; padding-bottom:18px; }
+.modal-layer.in .modal{ transform:none; }
+.modal-head{ display:flex; align-items:center; padding:16px 16px 8px; }
+.modal-head h2{ margin-right:auto; }
+.modal-sub{ padding:0 16px 12px; font-size:11.5px; color:var(--text-dim); }
+.modal-fine{ padding:6px 20px 14px; font-size:10.5px; color:var(--text-faint); font-family:var(--font-mono); }
+
+.offline-take{
+  font-family:var(--font-mono); font-size:34px; font-weight:700; color:var(--accent);
+  text-shadow:0 0 30px rgba(255,200,50,.35); padding:6px 0 2px;
+}
+
+.cta{
+  font-family:var(--font-mono); font-size:11px; letter-spacing:.1em; font-weight:700;
+  padding:9px 16px; border-radius:9px;
+  background:rgba(255,255,255,.06); border:1px solid var(--line); color:var(--text-dim);
+  transition:transform .1s, background .15s;
+}
+.cta.afford{ background:var(--accent); color:#1a1405; border-color:transparent; }
+.cta:active{ transform:scale(.96); }
+.cta.wide{ margin:4px 20px 0; background:var(--accent); color:#1a1405; border-color:transparent; }
+
+/* ---- booster rows ---- */
+.brow{
+  display:flex; align-items:center; gap:11px;
+  padding:11px 12px; border-radius:10px;
+  background:var(--bg-row); border:1px solid transparent;
+}
+.brow.active{
+  border-color:color-mix(in srgb, var(--c) 55%, transparent);
+  background:color-mix(in srgb, var(--c) 9%, transparent);
+}
+.brow.cooling{ opacity:.62; }
+.bico{ font-size:20px; flex:none; filter:drop-shadow(0 0 8px color-mix(in srgb, var(--c) 55%, transparent)); }
+.bmain{ display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+.bname{ font-size:12.5px; font-weight:600; }
+.bdesc{ font-family:var(--font-mono); font-size:10px; color:var(--text-dim); }
+.bmeter{ height:4px; border-radius:2px; background:rgba(255,255,255,.08); overflow:hidden; margin-top:3px; }
+.bmeter i{ display:block; height:100%; width:0; background:var(--c); transition:width .3s linear; }
+.bcta{ flex:none; min-width:96px; text-align:center; }
+
+/* =========================================================== TOASTS === */
+#toasts{
+  position:absolute; left:50%; transform:translateX(-50%);
+  bottom:calc(60px + var(--sheet-h) + 14px);
+  display:flex; flex-direction:column; gap:6px; align-items:center;
+  pointer-events:none; z-index:15; width:max-content; max-width:90vw;
+}
+.toast{
+  font-family:var(--font-mono); font-size:11px;
+  padding:8px 14px; border-radius:999px;
+  background:rgba(14,19,27,.96); border:1px solid var(--line);
+  box-shadow:0 8px 26px rgba(0,0,0,.5);
+  opacity:0; transform:translateY(8px); transition:opacity .22s, transform .22s;
+}
+.toast.in{ opacity:1; transform:none; }
+.toast.good{ border-color:rgba(125,255,176,.45); color:var(--good); }
+.toast.warn{ border-color:rgba(255,179,71,.45); color:var(--warn); }
+
+@keyframes fadein{ from{ opacity:0; transform:translateY(-4px);} to{ opacity:1; } }
+
+/* ============================================================ SMALL === */
+@media (max-width:640px){
+  :root{ --sheet-h:min(52vh, 400px); }
+  .brand-name{ display:none; }
+  .wallet b{ font-size:17px; }
+  .objective{ gap:7px; padding:6px 9px; }
+  .obj-meter{ flex-basis:52px; }
+  .obj-reward{ display:none; }
+  .tab span:not(.tab-ico){ display:none; }
+  .tab{ padding:10px 20px; }
+  .tab .tab-ico{ font-size:15px; }
+  .line-summary{ grid-template-columns:repeat(2, 1fr); }
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <!-- ============================ WORLD ============================ -->
+  <canvas id="factory-canvas"
+          aria-label="Isometric factory floor: conveyor lines, robotic arms and loading docks">
+    Isometric factory view. This game requires canvas support.
+  </canvas>
+
+  <div class="fx-vignette" aria-hidden="true"></div>
+  <div class="fx-scanlines" aria-hidden="true"></div>
+
+  <!-- ============================ HEADER =========================== -->
+  <header id="hud">
+    <div class="hud-bar">
+      <div class="brand">
+        <span class="brand-mark"></span>
+        <span class="brand-name">ISO<em>FACTORY</em></span>
+      </div>
+
+      <div class="wallet">
+        <b id="ui-cash">$0</b>
+        <span id="ui-rate">$0/min</span>
+      </div>
+
+      <div class="level" id="ui-level-wrap" title="Player level">
+        <span class="level-badge">LV <b id="ui-level">1</b></span>
+        <span class="level-meter"><i id="ui-xp"></i></span>
+      </div>
+
+      <button class="icon-btn" id="ui-mute" type="button"
+              aria-pressed="false" title="Mute (M)">
+        <span id="ui-mute-icon">🔊</span>
+      </button>
+    </div>
+
+    <!-- objective banner -->
+    <div class="objective" id="ui-objective">
+      <span class="obj-tag">OBJECTIVE</span>
+      <span class="obj-name" id="ui-obj-name">—</span>
+      <span class="obj-meter"><i id="ui-obj-fill"></i></span>
+      <span class="obj-count" id="ui-obj-count"></span>
+      <span class="obj-reward" id="ui-obj-reward"></span>
+    </div>
+
+    <!-- active booster pills -->
+    <div class="boost-strip" id="ui-boost-strip"></div>
+  </header>
+
+  <!-- diagnostics, toggled with D -->
+  <div class="diag" id="ui-diag" hidden>
+    <span class="chip"><b id="stat-fps">0</b> fps</span>
+    <span class="chip"><b id="stat-draws">0</b> draws</span>
+    <span class="chip"><b id="stat-ents">0</b> ents</span>
+    <span class="chip"><b id="stat-zoom">1.00</b>×</span>
+  </div>
+
+  <!-- ======================== BOTTOM SHEET ========================= -->
+  <section id="sheet" class="sheet" aria-live="polite">
+    <!-- ---------- PRODUCTS ---------- -->
+    <div class="panel" id="panel-products" data-panel="products">
+      <div class="panel-head">
+        <h2>Products</h2>
+        <span class="panel-note" id="ui-lines-note">1 / 8 lines</span>
+      </div>
+      <div class="rows" id="ui-product-rows"></div>
+    </div>
+
+    <!-- ---------- FACTORY ---------- -->
+    <div class="panel" id="panel-factory" data-panel="factory" hidden>
+      <div class="panel-head">
+        <h2 id="ui-factory-title">Factory</h2>
+        <div class="buyamt" id="ui-buyamt" role="group" aria-label="Buy amount">
+          <button type="button" data-amt="1" class="on">×1</button>
+          <button type="button" data-amt="10">×10</button>
+          <button type="button" data-amt="max">MAX</button>
+        </div>
+      </div>
+      <div class="line-summary" id="ui-line-summary"></div>
+      <div class="rows" id="ui-axis-rows"></div>
+    </div>
+  </section>
+
+  <!-- ============================= TABS ============================ -->
+  <nav id="tabs" aria-label="Main navigation">
+    <button class="tab" type="button" data-tab="products">
+      <span class="tab-ico">▦</span><span>PRODUCTS</span>
+    </button>
+    <button class="tab" type="button" data-tab="factory">
+      <span class="tab-ico">⚙</span><span>FACTORY</span>
+    </button>
+    <button class="tab" type="button" data-tab="boosters">
+      <span class="tab-ico">⚡</span><span>BOOSTERS</span>
+    </button>
+  </nav>
+
+  <!-- =========================== MODALS ============================ -->
+  <div class="modal-layer" id="modal-boosters" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="boost-title">
+      <div class="modal-head">
+        <h2 id="boost-title">⚡ Boosters</h2>
+        <button class="icon-btn" type="button" data-close>✕</button>
+      </div>
+      <p class="modal-sub">Free surges on a cooldown. Stack them.</p>
+      <div class="rows" id="ui-booster-rows"></div>
+    </div>
+  </div>
+
+  <div class="modal-layer" id="modal-offline" hidden>
+    <div class="modal narrow" role="dialog" aria-modal="true" aria-labelledby="off-title">
+      <div class="modal-head">
+        <h2 id="off-title">Welcome back</h2>
+      </div>
+      <p class="modal-sub" id="ui-offline-away">—</p>
+      <div class="offline-take" id="ui-offline-amount">$0</div>
+      <p class="modal-fine" id="ui-offline-fine"></p>
+      <button class="cta wide" type="button" id="ui-offline-collect">COLLECT</button>
+    </div>
+  </div>
+
+  <div id="toasts" aria-live="polite"></div>
+</div>
+
+<!-- Load order matters.
+     Renderer:  math → primitives → entities → engine
+     Economy:   content registry → mutable state → engine binding
+     Shell:     audio synth → UI overlay (boots last, wires everything) -->
+<script>
+/* ===== js/iso.js ===================================================== */
+/* =====================================================================
+   iso.js — Isometric projection math, camera, colour utilities and the
+   procedural drawing primitives every entity is built from.
+   ---------------------------------------------------------------------
+   COORDINATE CONTRACT
+     grid  (gx, gy, gz)  gx → screen right+down, gy → screen left+down,
+                         gz → screen up. 1 unit = 1 tile. Floats allowed.
+     screen(sx, sy)      world-space pixels BEFORE the camera transform.
+
+     sx = (gx - gy) * TILE_W/2
+     sy = (gx + gy) * TILE_H/2 - gz * Z_UNIT
+
+   DEPTH
+     Painter's algorithm. A draw command's sort key is
+        depth = (gx + gy)  ... primary   (further from camera = smaller)
+        then z, then layer, then insertion index (stable).
+     Entities may emit many commands so tall objects interleave correctly
+     with the tiles and items around them.
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  /* ------------------------------------------------------------------ */
+  /*  math helpers                                                       */
+  /* ------------------------------------------------------------------ */
+  const M = {
+    clamp: (v, a, b) => (v < a ? a : v > b ? b : v),
+    lerp: (a, b, t) => a + (b - a) * t,
+    /** Frame-rate independent exponential smoothing. */
+    damp: (a, b, lambda, dt) => a + (b - a) * (1 - Math.exp(-lambda * dt)),
+    easeInOut: t => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
+    easeOut: t => 1 - Math.pow(1 - t, 3),
+    easeIn: t => t * t * t,
+    /** 0→1 ramp with smooth ends, saturating outside [a,b]. */
+    smoothstep: (a, b, x) => {
+      const t = M.clamp((x - a) / (b - a || 1e-6), 0, 1);
+      return t * t * (3 - 2 * t);
+    },
+    /** Deterministic hash noise — stable layout jitter without RNG state. */
+    hash: (x, y = 0) => {
+      const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
+      return s - Math.floor(s);
+    },
+    mod: (a, n) => ((a % n) + n) % n,
+    dist: (x, y) => Math.sqrt(x * x + y * y)
+  };
+
+  /* ------------------------------------------------------------------ */
+  /*  colour                                                             */
+  /* ------------------------------------------------------------------ */
+  const Color = {
+    _cache: new Map(),
+
+    /**
+     * Parse "#rgb" / "#rrggbb" / "rgb(r,g,b)" → [r,g,b]. Cached — this runs
+     * thousands of times per frame. Accepting rgb() back matters: shaded
+     * results get re-shaded (a box face of an already-tinted crate), so
+     * every producer below must emit something this can re-read.
+     */
+    rgb(col) {
+      let c = Color._cache.get(col);
+      if (c) return c;
+      if (col.charCodeAt(0) === 114 /* r */) {          // rgb()/rgba()
+        const m = col.match(/-?\d+(\.\d+)?/g) || [0, 0, 0];
+        c = [+m[0] | 0, +m[1] | 0, +m[2] | 0];
+      } else {
+        let h = col.replace('#', '');
+        if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+        const n = parseInt(h, 16) || 0;
+        c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+      }
+      Color._cache.set(col, c);
+      return c;
+    },
+
+    hex(r, g, b) {
+      return '#' + (((1 << 24) + (M.clamp(r | 0, 0, 255) << 16) +
+        (M.clamp(g | 0, 0, 255) << 8) + M.clamp(b | 0, 0, 255))
+        .toString(16).slice(1));
+    },
+
+    /** amt > 0 lightens toward white, amt < 0 darkens toward black. */
+    shade(col, amt) {
+      const key = col + '|' + amt.toFixed(3);
+      let out = Color._cache.get(key);
+      if (out) return out;
+      const [r, g, b] = Color.rgb(col);
+      const t = amt < 0 ? 0 : 255;
+      const p = Math.abs(amt);
+      out = Color.hex(
+        Math.round((t - r) * p + r),
+        Math.round((t - g) * p + g),
+        Math.round((t - b) * p + b));
+      Color._cache.set(key, out);
+      return out;
+    },
+
+    alpha(col, a) {
+      const [r, g, b] = Color.rgb(col);
+      return `rgba(${r},${g},${b},${a})`;
+    },
+
+    mix(colA, colB, t) {
+      const a = Color.rgb(colA), b = Color.rgb(colB);
+      return Color.hex(M.lerp(a[0], b[0], t), M.lerp(a[1], b[1], t),
+        M.lerp(a[2], b[2], t));
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /*  Iso — the projection itself                                        */
+  /* ------------------------------------------------------------------ */
+  class Iso {
+    constructor(tileW = 64, tileH = 32, zUnit = 32) {
+      this.tileW = tileW;
+      this.tileH = tileH;
+      this.hw = tileW / 2;
+      this.hh = tileH / 2;
+      this.zUnit = zUnit;
+    }
+
+    /** grid → world-space screen pixels. */
+    x(gx, gy) { return (gx - gy) * this.hw; }
+    y(gx, gy, gz = 0) { return (gx + gy) * this.hh - gz * this.zUnit; }
+
+    /** Convenience object form (allocates — avoid in hot inner loops). */
+    project(gx, gy, gz = 0) {
+      return { x: (gx - gy) * this.hw, y: (gx + gy) * this.hh - gz * this.zUnit };
+    }
+
+    /** Inverse projection onto the gz = 0 plane. Used for mouse picking. */
+    unproject(sx, sy, gz = 0) {
+      const y = sy + gz * this.zUnit;
+      return {
+        gx: (y / this.hh + sx / this.hw) / 2,
+        gy: (y / this.hh - sx / this.hw) / 2
+      };
+    }
+
+    /** Painter sort key. Higher = drawn later = closer to the camera. */
+    depth(gx, gy, gz = 0, layer = 0) {
+      return (gx + gy) * 1000 + gz * 10 + layer;
+    }
+
+    /** Screen bounds of a w×d footprint rising to height h at origin. */
+    bounds(w, d, h = 0) {
+      return {
+        minX: this.x(0, d), maxX: this.x(w, 0),
+        minY: this.y(0, 0, h), maxY: this.y(w, d, 0)
+      };
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Draw primitives                                                    */
+  /*  All take (ctx, iso, ...) and paint in world-space screen pixels;    */
+  /*  the camera transform is already applied by the renderer.           */
+  /* ------------------------------------------------------------------ */
+
+  /** Face brightness constants — one light source, high and to the left. */
+  const FACE = { top: 0.16, left: -0.10, right: -0.34, front: -0.02 };
+
+  /** Trace a polygon from an array of grid triples [[x,y,z], ...]. */
+  function tracePoly(ctx, iso, pts) {
+    ctx.beginPath();
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const X = iso.x(p[0], p[1]);
+      const Y = iso.y(p[0], p[1], p[2]);
+      i === 0 ? ctx.moveTo(X, Y) : ctx.lineTo(X, Y);
+    }
+    ctx.closePath();
+  }
+
+  function fillPoly(ctx, iso, pts, fill, stroke, lw) {
+    tracePoly(ctx, iso, pts);
+    if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+    if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw || 1; ctx.stroke(); }
+  }
+
+  /** Flat tile diamond at (x,y) of size w×d on plane z. */
+  function diamond(ctx, iso, x, y, z, w, d, fill, stroke, lw) {
+    fillPoly(ctx, iso, [
+      [x, y, z], [x + w, y, z], [x + w, y + d, z], [x, y + d, z]
+    ], fill, stroke, lw);
+  }
+
+  /**
+   * The workhorse: an axis-aligned cuboid.
+   * o = { x, y, z, w, d, h, color, top, left, right, outline, alpha }
+   * Only the three camera-facing faces are emitted (top, left = +y face,
+   * right = +x face) — back faces are never visible in a fixed iso view.
+   */
+  function box(ctx, iso, o) {
+    const x = o.x, y = o.y, z = o.z || 0;
+    const w = o.w, d = o.d, h = o.h;
+    const c = o.color || '#888';
+    const zt = z + h;
+
+    if (o.alpha != null) { ctx.save(); ctx.globalAlpha *= o.alpha; }
+
+    const line = o.outline === false ? null
+      : (o.outline || Color.shade(c, -0.62));
+    const lw = o.lineWidth || 1;
+
+    // +x face (screen right)
+    fillPoly(ctx, iso, [
+      [x + w, y, zt], [x + w, y + d, zt], [x + w, y + d, z], [x + w, y, z]
+    ], o.right || Color.shade(c, FACE.right), line, lw);
+
+    // +y face (screen left / front)
+    fillPoly(ctx, iso, [
+      [x, y + d, zt], [x + w, y + d, zt], [x + w, y + d, z], [x, y + d, z]
+    ], o.left || Color.shade(c, FACE.left), line, lw);
+
+    // top
+    if (h !== 0 || o.forceTop !== false) {
+      fillPoly(ctx, iso, [
+        [x, y, zt], [x + w, y, zt], [x + w, y + d, zt], [x, y + d, zt]
+      ], o.top || Color.shade(c, FACE.top), line, lw);
+    }
+
+    if (o.alpha != null) ctx.restore();
+  }
+
+  /**
+   * Vertical cylinder approximated with an ellipse cap + a body quad.
+   * Used for arm bases, tanks, silos, exhaust stacks.
+   */
+  function cylinder(ctx, iso, cx, cy, z, r, h, color, opts) {
+    opts = opts || {};
+    const rx = r * iso.hw, ry = r * iso.hh;
+    const sx = iso.x(cx, cy);
+    const yTop = iso.y(cx, cy, z + h);
+    const yBot = iso.y(cx, cy, z);
+    const line = opts.outline === false ? null : Color.shade(color, -0.6);
+
+    // body: left/right silhouette + bottom arc
+    ctx.beginPath();
+    ctx.moveTo(sx - rx, yTop);
+    ctx.lineTo(sx - rx, yBot);
+    ctx.ellipse(sx, yBot, rx, ry, 0, Math.PI, 0, true);
+    ctx.lineTo(sx + rx, yTop);
+    ctx.ellipse(sx, yTop, rx, ry, 0, 0, Math.PI, false);
+    ctx.closePath();
+    const g = ctx.createLinearGradient(sx - rx, 0, sx + rx, 0);
+    g.addColorStop(0, Color.shade(color, -0.30));
+    g.addColorStop(0.42, Color.shade(color, 0.04));
+    g.addColorStop(1, Color.shade(color, -0.42));
+    ctx.fillStyle = g; ctx.fill();
+    if (line) { ctx.strokeStyle = line; ctx.lineWidth = opts.lineWidth || 1; ctx.stroke(); }
+
+    // top cap
+    ctx.beginPath();
+    ctx.ellipse(sx, yTop, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fillStyle = opts.cap || Color.shade(color, FACE.top + 0.06);
+    ctx.fill();
+    if (line) ctx.stroke();
+  }
+
+  /**
+   * Soft contact shadow on the ground plane. Two stacked diamonds fake a
+   * penumbra far cheaper than ctx.filter blur.
+   */
+  function shadow(ctx, iso, x, y, w, d, strength) {
+    const s = strength == null ? 0.30 : strength;
+    const cx = x + w / 2, cy = y + d / 2;
+    const grow = 0.28;
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${s * 0.42})`;
+    tracePoly(ctx, iso, [
+      [cx - w / 2 - grow, cy, 0], [cx, cy - d / 2 - grow, 0],
+      [cx + w / 2 + grow, cy, 0], [cx, cy + d / 2 + grow, 0]
+    ]); ctx.fill();
+    ctx.fillStyle = `rgba(0,0,0,${s})`;
+    tracePoly(ctx, iso, [
+      [cx - w / 2, cy, 0], [cx, cy - d / 2, 0],
+      [cx + w / 2, cy, 0], [cx, cy + d / 2, 0]
+    ]); ctx.fill();
+    ctx.restore();
+  }
+
+  /** Additive glow blob in world-screen space — lamps, sparks, embers. */
+  function glow(ctx, iso, gx, gy, gz, radius, color, intensity) {
+    const X = iso.x(gx, gy), Y = iso.y(gx, gy, gz);
+    const g = ctx.createRadialGradient(X, Y, 0, X, Y, radius);
+    g.addColorStop(0, Color.alpha(color, 0.85 * (intensity == null ? 1 : intensity)));
+    g.addColorStop(0.45, Color.alpha(color, 0.22 * (intensity == null ? 1 : intensity)));
+    g.addColorStop(1, Color.alpha(color, 0));
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.beginPath(); ctx.arc(X, Y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+    ctx.restore();
+  }
+
+  /**
+   * A thick capsule between two GRID points — the building block of the
+   * robot arm links. Drawn as an outlined stroke plus a specular streak so
+   * segments read as tubular metal rather than flat lines.
+   */
+  function limb(ctx, iso, a, b, width, color, opts) {
+    opts = opts || {};
+    const x1 = iso.x(a[0], a[1]), y1 = iso.y(a[0], a[1], a[2]);
+    const x2 = iso.x(b[0], b[1]), y2 = iso.y(b[0], b[1], b[2]);
+
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+
+    // outline
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.lineWidth = width + 2.5;
+    ctx.strokeStyle = Color.shade(color, -0.66);
+    ctx.stroke();
+
+    // core
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.stroke();
+
+    // specular streak, offset toward the light (up-left)
+    if (opts.spec !== false) {
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;      // unit normal
+      const off = width * 0.24 * (nx < 0 ? 1 : -1);
+      ctx.beginPath();
+      ctx.moveTo(x1 + nx * off, y1 + ny * off);
+      ctx.lineTo(x2 + nx * off, y2 + ny * off);
+      ctx.lineWidth = Math.max(1, width * 0.26);
+      ctx.strokeStyle = Color.shade(color, 0.34);
+      ctx.stroke();
+    }
+
+    // shaded underside
+    if (opts.shade !== false) {
+      const dx = x2 - x1, dy = y2 - y1, len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;
+      const off = width * 0.30 * (nx < 0 ? -1 : 1);
+      ctx.beginPath();
+      ctx.moveTo(x1 + nx * off, y1 + ny * off);
+      ctx.lineTo(x2 + nx * off, y2 + ny * off);
+      ctx.lineWidth = Math.max(1, width * 0.20);
+      ctx.strokeStyle = Color.alpha('#000000', 0.28);
+      ctx.stroke();
+    }
+  }
+
+  /** Joint puck at a grid point — the dark pivot discs between limbs. */
+  function joint(ctx, iso, p, r, color) {
+    const X = iso.x(p[0], p[1]), Y = iso.y(p[0], p[1], p[2]);
+    ctx.beginPath(); ctx.arc(X, Y, r, 0, Math.PI * 2);
+    ctx.fillStyle = color || '#22262c'; ctx.fill();
+    ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(X - r * 0.28, Y - r * 0.32, r * 0.34, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,.16)'; ctx.fill();
+  }
+
+  /** Text label pinned to a grid point (debug / signage). */
+  function label(ctx, iso, gx, gy, gz, text, opts) {
+    opts = opts || {};
+    const X = iso.x(gx, gy), Y = iso.y(gx, gy, gz);
+    ctx.save();
+    ctx.font = opts.font || '600 9px "JetBrains Mono", ui-monospace, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (opts.bg) {
+      const w = ctx.measureText(text).width + 10;
+      ctx.fillStyle = opts.bg;
+      ctx.beginPath();
+      // roundRect is recent (Safari 16 / FF 112); fall back to a plain box
+      if (ctx.roundRect) ctx.roundRect(X - w / 2, Y - 8, w, 16, 4);
+      else ctx.rect(X - w / 2, Y - 8, w, 16);
+      ctx.fill();
+    }
+    ctx.fillStyle = opts.color || 'rgba(214,226,240,.8)';
+    ctx.fillText(text, X, Y);
+    ctx.restore();
+  }
+
+  /* ------------------------------------------------------------------ */
+  /*  Camera — pan, zoom, auto-fit                                       */
+  /* ------------------------------------------------------------------ */
+  class Camera {
+    constructor() {
+      this.x = 0; this.y = 0;          // applied screen-space translation
+      this.zoom = 1;                   // applied zoom
+      this.fitZoom = 1;                // zoom that makes the world fit
+      this.userZoom = 1;               // player multiplier on top of fit
+      this.minUser = 0.45; this.maxUser = 2.8;
+      this.tx = 0; this.ty = 0;        // smoothing targets
+      this.tZoom = 1;
+      this.panX = 0; this.panY = 0;    // player pan, survives a resize
+      this._vw = 1; this._vh = 1; this._cx = 0; this._cy = 0;
+    }
+
+    /**
+     * Recompute fit zoom + centring for the current viewport.
+     * `wb` is the world screen-space bounding box in unzoomed pixels.
+     * Any pan/zoom the player applied is preserved across the refit.
+     */
+    fit(viewW, viewH, wb, pad) {
+      const p = pad == null ? 0.90 : pad;
+      const ww = (wb.maxX - wb.minX) || 1;
+      const wh = (wb.maxY - wb.minY) || 1;
+      this._vw = viewW; this._vh = viewH;
+      this._cx = (wb.minX + wb.maxX) / 2;
+      this._cy = (wb.minY + wb.maxY) / 2;
+      this.fitZoom = Math.min(viewW / ww, viewH / wh) * p;
+      this._recenter();
+    }
+
+    _recenter() {
+      this.tZoom = this.fitZoom * this.userZoom;
+      this.tx = this._vw / 2 - this._cx * this.tZoom + this.panX;
+      this.ty = this._vh / 2 - this._cy * this.tZoom + this.panY;
+    }
+
+    /** Zoom around a screen anchor so the point under the cursor stays put. */
+    zoomAt(screenX, screenY, factor) {
+      const before = this.tZoom;
+      this.userZoom = M.clamp(this.userZoom * factor, this.minUser, this.maxUser);
+      this.tZoom = this.fitZoom * this.userZoom;
+      const k = this.tZoom / before;
+      const nx = screenX - (screenX - this.tx) * k;
+      const ny = screenY - (screenY - this.ty) * k;
+      // fold the anchor correction back into the persistent pan offset
+      this.panX = nx - (this._vw / 2 - this._cx * this.tZoom);
+      this.panY = ny - (this._vh / 2 - this._cy * this.tZoom);
+      this.tx = nx; this.ty = ny;
+    }
+
+    pan(dx, dy) {
+      this.panX += dx; this.panY += dy;
+      this.tx += dx; this.ty += dy;
+      this.x += dx; this.y += dy;      // 1:1 with the pointer, no lag
+    }
+
+    /** Back to the auto-fitted framing. */
+    reset() { this.panX = 0; this.panY = 0; this.userZoom = 1; this._recenter(); }
+
+    update(dt) {
+      this.x = M.damp(this.x, this.tx, 14, dt);
+      this.y = M.damp(this.y, this.ty, 14, dt);
+      this.zoom = M.damp(this.zoom, this.tZoom, 14, dt);
+    }
+
+    snap() { this.x = this.tx; this.y = this.ty; this.zoom = this.tZoom; }
+
+    /** Canvas CSS px → world-space screen px. */
+    toWorld(sx, sy) {
+      return { x: (sx - this.x) / this.zoom, y: (sy - this.y) / this.zoom };
+    }
+  }
+
+  /* ------------------------------------------------------------------ */
+  global.ISO = {
+    M, Color, Iso, Camera, FACE,
+    draw: {
+      tracePoly, fillPoly, diamond, box, cylinder,
+      shadow, glow, limb, joint, label
+    }
+  };
+})(window);
+
+/* ===== js/entities.js ================================================ */
+/* =====================================================================
+   entities.js — every procedural prop in the factory.
+   ---------------------------------------------------------------------
+   Contract for the renderer:
+     update(dt, time)   advance animation state (dt in seconds)
+     collect(rl)        push draw commands: rl.add(depthKey, (ctx, iso) => {})
+
+   Entities emit MANY commands (a conveyor emits one per tile, plus one per
+   item) so the painter sort interleaves them correctly with everything
+   standing around them.
+
+   Nothing here knows about money, rates, or upgrades — Step 2 drives these
+   objects purely through their public fields (speed, active, colour, and
+   the spawn/dock hooks flagged with «STEP-2 HOOK»).
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const { M, Color, draw } = global.ISO;
+  const D = draw;
+
+  let __uid = 0;
+
+  /* =================================================================== */
+  /*  Base                                                               */
+  /* =================================================================== */
+  class Entity {
+    constructor(o) {
+      this.id = 'e' + (++__uid);
+      this.x = 0; this.y = 0; this.z = 0;
+      this.active = true;
+      this.tag = 'entity';
+      Object.assign(this, o || {});
+      this.age = 0;
+    }
+    update(dt) { this.age += dt; }
+    collect() { }
+  }
+
+  /* =================================================================== */
+  /*  Ground — floor plate, road, dock apron, grid, hover tile           */
+  /*  Drawn as a single command underneath everything else.              */
+  /* =================================================================== */
+  class Ground extends Entity {
+    constructor(o) {
+      super(Object.assign({ tag: 'ground', w: 24, d: 24, road: null, marks: [] }, o));
+      this.showGrid = true;
+      this.hover = null;          // {gx, gy} set by the engine on mousemove
+      this.palette = {
+        a: '#1d242e', b: '#212a35', edge: '#2c3947',
+        rim: '#151b23', road: '#191d23', paint: '#e0c85a'
+      };
+    }
+
+    collect(rl) {
+      rl.add(-1e12, (ctx, iso) => {
+        const W = this.w, Dp = this.d, P = this.palette;
+
+        // --- slab side walls, so the plate reads as a solid block -----
+        D.box(ctx, iso, {
+          x: 0, y: 0, z: -0.6, w: W, d: Dp, h: 0.6,
+          color: P.rim, top: P.a, outline: '#0d1218'
+        });
+
+        // --- tiles ---------------------------------------------------
+        for (let gx = 0; gx < W; gx++) {
+          for (let gy = 0; gy < Dp; gy++) {
+            const n = M.hash(gx * 3.1, gy * 7.7);
+            const base = ((gx + gy) & 1) ? P.a : P.b;
+            D.diamond(ctx, iso, gx, gy, 0, 1, 1,
+              Color.shade(base, (n - 0.5) * 0.09), null, 0);
+          }
+        }
+
+        // --- painted floor markings ----------------------------------
+        ctx.save();
+        ctx.globalAlpha = 0.14;
+        for (const m of (this.marks || [])) {
+          D.diamond(ctx, iso, m.x, m.y, 0.002, m.w, m.d, m.color || '#ffc832');
+        }
+        ctx.restore();
+
+        // --- grid ----------------------------------------------------
+        if (this.showGrid) {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(130,175,220,.075)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let i = 0; i <= W; i++) {
+            ctx.moveTo(iso.x(i, 0), iso.y(i, 0));
+            ctx.lineTo(iso.x(i, Dp), iso.y(i, Dp));
+          }
+          for (let j = 0; j <= Dp; j++) {
+            ctx.moveTo(iso.x(0, j), iso.y(0, j));
+            ctx.lineTo(iso.x(W, j), iso.y(W, j));
+          }
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // --- road / truck lane ---------------------------------------
+        if (this.road) {
+          const r = this.road;
+          D.diamond(ctx, iso, r.x0, r.y, 0.004, r.x1 - r.x0, r.d, P.road);
+          // kerbs
+          D.diamond(ctx, iso, r.x0, r.y - 0.12, 0.005, r.x1 - r.x0, 0.12, '#2a323d');
+          D.diamond(ctx, iso, r.x0, r.y + r.d, 0.005, r.x1 - r.x0, 0.12, '#2a323d');
+          // centre dashes
+          ctx.save(); ctx.globalAlpha = 0.5;
+          for (let s = r.x0 + 0.4; s < r.x1; s += 1.6) {
+            D.diamond(ctx, iso, s, r.y + r.d / 2 - 0.05, 0.006, 0.8, 0.1, P.paint);
+          }
+          ctx.restore();
+        }
+
+        // --- outer rim highlight -------------------------------------
+        D.fillPoly(ctx, iso, [
+          [0, 0, 0], [W, 0, 0], [W, Dp, 0], [0, Dp, 0]
+        ], null, 'rgba(150,200,255,.14)', 1.5);
+
+        // --- hover highlight -----------------------------------------
+        if (this.hover) {
+          const h = this.hover, pulse = 0.35 + 0.2 * Math.sin(this.age * 5);
+          D.diamond(ctx, iso, h.gx, h.gy, 0.01, 1, 1,
+            `rgba(255,200,50,${0.10 + pulse * 0.10})`,
+            `rgba(255,200,50,${0.5 + pulse * 0.3})`, 1.5);
+        }
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  Conveyor — animated belt carrying items                            */
+  /* =================================================================== */
+  const ITEM_KINDS = [
+    { color: '#c98f4b', size: 0.34, name: 'crate' },
+    { color: '#5aa9e6', size: 0.30, name: 'part' },
+    { color: '#8ad07a', size: 0.28, name: 'cell' },
+    { color: '#d46f6f', size: 0.32, name: 'alloy' }
+  ];
+
+  class Conveyor extends Entity {
+    /**
+     * @param {object} o  {x, y, len, dir:'+x'|'-x'|'+y'|'-y', speed, width}
+     */
+    constructor(o) {
+      super(Object.assign({
+        tag: 'conveyor', len: 6, dir: '+x', speed: 1.1, width: 0.72,
+        color: '#39424e', beltColor: '#15191f', railColor: '#4a5563',
+        height: 0.34, autoSpawn: true, spacing: 1.0,
+        /** Payload appearance pool; null = the default mixed crates. */
+        kinds: null,
+        /** «STEP-2 HOOK» called with the item when it runs off the end. */
+        onDeliver: null
+      }, o));
+
+      const dirs = { '+x': [1, 0], '-x': [-1, 0], '+y': [0, 1], '-y': [0, -1] };
+      const a = dirs[this.dir] || dirs['+x'];
+      this.ax = a[0]; this.ay = a[1];
+      this.px = -this.ay; this.py = this.ax;   // perpendicular (grid space)
+
+      this.scroll = 0;
+      this.items = [];
+      if (this.autoSpawn) {
+        for (let s = 0; s < this.len; s += this.spacing) {
+          this.items.push(this._makeItem(s));
+        }
+      }
+    }
+
+    _pool() { return (this.kinds && this.kinds.length) ? this.kinds : ITEM_KINDS; }
+
+    _makeItem(s, kind) {
+      const pool = this._pool();
+      const k = kind || pool[(Math.random() * pool.length) | 0];
+      return { s, kind: k, spin: Math.random() * Math.PI, wobble: Math.random() * 6.28 };
+    }
+
+    /** Swap the payload appearance — existing items re-roll in place. */
+    setKinds(kinds) {
+      this.kinds = kinds;
+      const pool = this._pool();
+      for (const it of this.items) it.kind = pool[(Math.random() * pool.length) | 0];
+    }
+
+    /** Re-space the payload; only rebuilds when the gap really changed. */
+    setSpacing(spacing) {
+      const s = Math.max(0.25, spacing);
+      if (Math.abs(s - this.spacing) < 0.05) return;
+      this.spacing = s;
+      if (!this.autoSpawn) return;
+      const phase = this.items.length ? this.items[0].s % s : 0;
+      this.items.length = 0;
+      for (let t = phase; t < this.len; t += s) this.items.push(this._makeItem(t));
+    }
+
+    /** «STEP-2 HOOK» push a specific payload onto the tail of the belt. */
+    spawnItem(kind) { this.items.push(this._makeItem(0, kind)); }
+
+    /** Grid point at belt coordinate (s along, u across, z up). */
+    point(s, u, z) {
+      return [
+        this.x + this.ax * s + this.px * u,
+        this.y + this.ay * s + this.py * u,
+        (z == null ? this.height : z)
+      ];
+    }
+
+    /** Axis-aligned footprint for the (s,u) rectangle — boxes need x/y/w/d. */
+    _rect(s0, s1, u0, u1) {
+      const ax = this.ax, ay = this.ay, px = this.px, py = this.py;
+      const c1x = this.x + ax * s0 + px * u0, c1y = this.y + ay * s0 + py * u0;
+      const c2x = this.x + ax * s1 + px * u1, c2y = this.y + ay * s1 + py * u1;
+      return {
+        x: Math.min(c1x, c2x), y: Math.min(c1y, c2y),
+        w: Math.abs(c2x - c1x), d: Math.abs(c2y - c1y)
+      };
+    }
+
+    update(dt) {
+      super.update(dt);
+      if (!this.active) return;
+      this.scroll = M.mod(this.scroll + this.speed * dt, 0.5);
+      const v = this.speed * dt;
+      for (let i = this.items.length - 1; i >= 0; i--) {
+        const it = this.items[i];
+        it.s += v;
+        if (it.s > this.len) {
+          if (this.onDeliver) this.onDeliver(it);
+          if (this.autoSpawn) { it.s -= this.len; it.kind = ITEM_KINDS[(Math.random() * 4) | 0]; }
+          else this.items.splice(i, 1);
+        }
+      }
+    }
+
+    collect(rl) {
+      const H = this.height, hw = this.width / 2;
+
+      // ---- structure, one command per tile so props interleave -------
+      for (let i = 0; i < this.len; i++) {
+        const s0 = i, s1 = i + 1;
+        const mid = this.point(i + 0.5, 0, 0);
+        rl.add(rl.iso.depth(mid[0], mid[1], 0, 1), (ctx, iso) => {
+          // contact shadow
+          const sh = this._rect(s0, s1, -hw - 0.08, hw + 0.08);
+          D.shadow(ctx, iso, sh.x, sh.y, sh.w, sh.d, 0.26);
+
+          // support legs every other tile
+          if (i % 2 === 0) {
+            for (const u of [-hw + 0.08, hw - 0.16]) {
+              const lr = this._rect(s0 + 0.35, s0 + 0.5, u, u + 0.1);
+              D.box(ctx, iso, {
+                x: lr.x, y: lr.y, z: 0, w: Math.max(lr.w, 0.1), d: Math.max(lr.d, 0.1),
+                h: H - 0.06, color: '#2b333d'
+              });
+            }
+          }
+
+          // deck / chassis
+          const deck = this._rect(s0, s1, -hw, hw);
+          D.box(ctx, iso, {
+            x: deck.x, y: deck.y, z: H - 0.1, w: deck.w, d: deck.d, h: 0.1,
+            color: this.color, outline: '#151a20'
+          });
+
+          // belt surface
+          const belt = this._rect(s0, s1, -hw + 0.07, hw - 0.07);
+          D.diamond(ctx, iso, belt.x, belt.y, H + 0.001,
+            belt.w, belt.d, this.beltColor);
+
+          // moving treads — chevrons crossing the belt every 0.25u
+          ctx.save();
+          ctx.strokeStyle = this.active ? 'rgba(180,205,235,.30)' : 'rgba(120,130,145,.15)';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          const step = 0.25;
+          const off = M.mod(this.scroll, step);
+          for (let t = s0 - off; t < s1; t += step) {
+            if (t < s0 - 1e-6) continue;
+            const a = this.point(t, -hw + 0.07, H + 0.002);
+            const b = this.point(t, hw - 0.07, H + 0.002);
+            ctx.moveTo(iso.x(a[0], a[1]), iso.y(a[0], a[1], a[2]));
+            ctx.lineTo(iso.x(b[0], b[1]), iso.y(b[0], b[1], b[2]));
+          }
+          ctx.stroke();
+          ctx.restore();
+
+          // side rails
+          for (const u of [-hw, hw - 0.06]) {
+            const r = this._rect(s0, s1, u, u + 0.06);
+            D.box(ctx, iso, {
+              x: r.x, y: r.y, z: H, w: Math.max(r.w, 0.06), d: Math.max(r.d, 0.06),
+              h: 0.1, color: this.railColor, outline: '#171c22'
+            });
+          }
+
+          // running light strip on the outer rail
+          if (this.active) {
+            const on = M.mod(i * 0.5 - this.scroll * 2, 3) < 1;
+            if (on) {
+              const p = this.point(i + 0.5, hw + 0.02, H + 0.12);
+              D.glow(ctx, iso, p[0], p[1], p[2], 9, '#ffc832', 0.5);
+            }
+          }
+        });
+      }
+
+      // ---- payload items --------------------------------------------
+      for (const it of this.items) {
+        const p = this.point(it.s, 0, H + 0.02);
+        rl.add(rl.iso.depth(p[0], p[1], p[2], 3), (ctx, iso) => {
+          const k = it.kind, sz = k.size;
+          const bob = Math.sin(this.age * 9 + it.wobble) * 0.012 * (this.active ? 1 : 0);
+          D.shadow(ctx, iso, p[0] - sz / 2, p[1] - sz / 2, sz, sz, 0.18);
+          D.box(ctx, iso, {
+            x: p[0] - sz / 2, y: p[1] - sz / 2, z: p[2] + bob,
+            w: sz, d: sz, h: sz * 0.78, color: k.color
+          });
+          // strap detail
+          const strap = Color.shade(k.color, -0.45);
+          D.diamond(ctx, iso, p[0] - sz / 2, p[1] - 0.03,
+            p[2] + bob + sz * 0.78 + 0.001, sz, 0.06, strap);
+        });
+      }
+    }
+  }
+
+  /* =================================================================== */
+  /*  RobotArm — yellow articulated 3-link manipulator with real IK      */
+  /* =================================================================== */
+  class RobotArm extends Entity {
+    /**
+     * @param {object} o {x, y, pick:[gx,gy,gz], place:[gx,gy,gz], color, cycle}
+     */
+    constructor(o) {
+      super(Object.assign({
+        tag: 'arm',
+        color: '#f2c025', dark: '#23282f', accent: '#2b3038',
+        L1: 1.25, L2: 1.05,        // upper arm / forearm length (grid units)
+        baseH: 0.45,               // pedestal height
+        cycle: 3.4,                // seconds per full pick-and-place
+        phase: 0,                  // stagger identical arms
+        pick: [1, 0, 0.6],
+        place: [-1, 0, 0.6],
+        payloadColor: '#c98f4b',
+        /** «STEP-2 HOOK» fires when the arm releases at the place point. */
+        onPlace: null
+      }, o));
+
+      this.t = this.phase % 1;
+      this.grip = 0;               // 0 = open, 1 = closed
+      this.holding = null;         // {color, size}
+      this.yaw = 0;
+      this.effector = [this.x, this.y, this.baseH];
+      this.spark = 0;
+
+      // Key poses, expressed as fractions of the cycle. The effector is
+      // eased between them; `g` is the gripper state at that pose.
+      const lift = 0.55;
+      this.keys = [
+        { p: [this.pick[0], this.pick[1], this.pick[2] + lift], t: 0.00, g: 0 },
+        { p: this.pick, t: 0.14, g: 0 },
+        { p: this.pick, t: 0.22, g: 1 },   // close on the item
+        { p: [this.pick[0], this.pick[1], this.pick[2] + lift], t: 0.34, g: 1 },
+        { p: [this.place[0], this.place[1], this.place[2] + lift], t: 0.58, g: 1 },
+        { p: this.place, t: 0.70, g: 1 },
+        { p: this.place, t: 0.78, g: 0 },  // release
+        { p: [this.place[0], this.place[1], this.place[2] + lift], t: 0.88, g: 0 },
+        { p: [this.pick[0], this.pick[1], this.pick[2] + lift], t: 1.00, g: 0 }
+      ];
+    }
+
+    /** 2-link planar IK solved in the vertical plane containing the yaw. */
+    _solve(reach, height) {
+      const L1 = this.L1, L2 = this.L2;
+      let d = Math.hypot(reach, height);
+      d = M.clamp(d, Math.abs(L1 - L2) + 0.02, L1 + L2 - 0.02);
+      const a = Math.atan2(height, reach);
+      const cosB = M.clamp((d * d + L1 * L1 - L2 * L2) / (2 * d * L1), -1, 1);
+      const shoulder = a + Math.acos(cosB);          // elbow-up solution
+      return {
+        shoulder,
+        elbowR: Math.cos(shoulder) * L1,
+        elbowZ: Math.sin(shoulder) * L1,
+        // recompute the reachable tip so the render never "detaches"
+        tipR: reach * (d / (Math.hypot(reach, height) || 1)),
+        tipZ: height * (d / (Math.hypot(reach, height) || 1))
+      };
+    }
+
+    update(dt) {
+      super.update(dt);
+      if (this.active) this.t = M.mod(this.t + dt / this.cycle, 1);
+
+      // --- sample the keyframe track -------------------------------
+      const K = this.keys;
+      let i = 0;
+      while (i < K.length - 1 && this.t > K[i + 1].t) i++;
+      const a = K[i], b = K[Math.min(i + 1, K.length - 1)];
+      const span = Math.max(b.t - a.t, 1e-4);
+      const k = M.easeInOut(M.clamp((this.t - a.t) / span, 0, 1));
+
+      const tx = M.lerp(a.p[0], b.p[0], k);
+      const ty = M.lerp(a.p[1], b.p[1], k);
+      const tz = M.lerp(a.p[2], b.p[2], k);
+      const wantGrip = M.lerp(a.g, b.g, k);
+
+      // pick-up / release edges
+      const wasHolding = !!this.holding;
+      this.grip = M.damp(this.grip, wantGrip, 22, dt);
+      if (!wasHolding && wantGrip > 0.5) {
+        this.holding = { color: this.payloadColor, size: 0.32 };
+        this.spark = 1;
+      } else if (wasHolding && wantGrip < 0.5) {
+        this.holding = null;
+        if (this.onPlace) this.onPlace(this);
+      }
+      this.spark = Math.max(0, this.spark - dt * 3);
+
+      // --- smooth the effector, then resolve the joint chain --------
+      this.effector[0] = M.damp(this.effector[0], tx, 26, dt);
+      this.effector[1] = M.damp(this.effector[1], ty, 26, dt);
+      this.effector[2] = M.damp(this.effector[2], tz, 26, dt);
+
+      const dx = this.effector[0] - this.x;
+      const dy = this.effector[1] - this.y;
+      const targetYaw = Math.atan2(dy, dx);
+      // shortest-path yaw interpolation
+      let delta = M.mod(targetYaw - this.yaw + Math.PI, Math.PI * 2) - Math.PI;
+      this.yaw += delta * (1 - Math.exp(-16 * dt));
+
+      const reach = Math.hypot(dx, dy);
+      const height = this.effector[2] - (this.z + this.baseH + 0.35);
+      this.ik = this._solve(reach, height);
+    }
+
+    collect(rl) {
+      const depth = rl.iso.depth(this.x, this.y, 0, 6);
+      rl.add(depth, (ctx, iso) => {
+        const c = this.color, dark = this.dark;
+        const cy = Math.cos(this.yaw), sy = Math.sin(this.yaw);
+        const bz = this.z + this.baseH;
+        const shoulderZ = bz + 0.35;
+
+        // world point at (radial r, height z) in the arm's working plane
+        const P = (r, zz) => [this.x + cy * r, this.y + sy * r, zz];
+
+        D.shadow(ctx, iso, this.x - 0.55, this.y - 0.55, 1.1, 1.1, 0.34);
+
+        // ---- bolted floor plate + pedestal -------------------------
+        D.box(ctx, iso, {
+          x: this.x - 0.52, y: this.y - 0.52, z: this.z, w: 1.04, d: 1.04,
+          h: 0.1, color: '#39404a'
+        });
+        for (const [ox, oy] of [[-0.42, -0.42], [0.32, -0.42], [-0.42, 0.32], [0.32, 0.32]]) {
+          D.box(ctx, iso, {
+            x: this.x + ox, y: this.y + oy, z: this.z + 0.1, w: 0.1, d: 0.1,
+            h: 0.05, color: '#20252b', outline: false
+          });
+        }
+        D.cylinder(ctx, iso, this.x, this.y, this.z + 0.1, 0.38,
+          this.baseH - 0.1, dark);
+
+        // ---- rotating turret (yellow) ------------------------------
+        D.cylinder(ctx, iso, this.x, this.y, bz, 0.34, 0.3, c, { cap: Color.shade(c, 0.2) });
+        // yaw indicator notch on the turret cap
+        const nA = P(0.30, bz + 0.31), nB = P(0.16, bz + 0.31);
+        D.limb(ctx, iso, nA, nB, 4, Color.shade(c, -0.4), { spec: false, shade: false });
+        // counterweight, opposite the reach direction
+        const cwA = P(-0.05, shoulderZ), cwB = P(-0.46, shoulderZ - 0.05);
+        D.limb(ctx, iso, cwA, cwB, 13, dark, { spec: false });
+
+        const ik = this.ik || { elbowR: 0.6, elbowZ: 0.6, tipR: 1, tipZ: 0.4 };
+        const shoulder = P(0, shoulderZ);
+        const elbow = P(ik.elbowR, shoulderZ + ik.elbowZ);
+        const wrist = [this.effector[0], this.effector[1], this.effector[2] + 0.24];
+        const tip = [this.effector[0], this.effector[1], this.effector[2]];
+
+        // ---- links --------------------------------------------------
+        D.limb(ctx, iso, shoulder, elbow, 13, c);              // upper arm
+        D.joint(ctx, iso, shoulder, 7.5, dark);
+        D.limb(ctx, iso, elbow, wrist, 10, c);                 // forearm
+        D.joint(ctx, iso, elbow, 6, dark);
+        // hydraulic strut running alongside the upper arm
+        const strutA = P(ik.elbowR * 0.18, shoulderZ - 0.12);
+        D.limb(ctx, iso, strutA, [
+          M.lerp(elbow[0], wrist[0], 0.15),
+          M.lerp(elbow[1], wrist[1], 0.15),
+          M.lerp(elbow[2], wrist[2], 0.15)
+        ], 4, '#8d949c', { spec: false });
+
+        // ---- wrist + gripper ---------------------------------------
+        D.joint(ctx, iso, wrist, 5, dark);
+        const spread = M.lerp(0.19, 0.085, this.grip);
+        const fx = -sy, fy = cy;                  // finger spread axis
+        for (const s of [-1, 1]) {
+          const knuckle = [wrist[0] + fx * spread * s, wrist[1] + fy * spread * s, wrist[2] - 0.1];
+          const fingerT = [wrist[0] + fx * spread * s * 0.8, wrist[1] + fy * spread * s * 0.8, tip[2] - 0.02];
+          D.limb(ctx, iso, wrist, knuckle, 6, Color.shade(c, -0.12), { spec: false });
+          D.limb(ctx, iso, knuckle, fingerT, 5, dark, { spec: false });
+        }
+
+        // ---- payload ------------------------------------------------
+        if (this.holding) {
+          const sz = this.holding.size;
+          D.box(ctx, iso, {
+            x: tip[0] - sz / 2, y: tip[1] - sz / 2, z: tip[2] - sz * 0.5,
+            w: sz, d: sz, h: sz * 0.8, color: this.holding.color
+          });
+        }
+        if (this.spark > 0.01) {
+          D.glow(ctx, iso, tip[0], tip[1], tip[2], 16 * this.spark, '#fff0a8', this.spark * 0.8);
+        }
+
+        // ---- status beacon on the turret ---------------------------
+        const blink = this.active ? (0.55 + 0.45 * Math.sin(this.age * 6)) : 0.15;
+        const bp = P(0, bz + 0.42);
+        D.glow(ctx, iso, bp[0], bp[1], bp[2], 8, this.active ? '#7dffb0' : '#ff5f56', blink);
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  Truck — arrives at a dock, waits, departs, loops                   */
+  /* =================================================================== */
+  class Truck extends Entity {
+    /**
+     * @param {object} o {laneY, dockX, dir:+1|-1, color, spawnX, exitX, wait}
+     */
+    constructor(o) {
+      super(Object.assign({
+        tag: 'truck',
+        laneY: 20, dockX: 8, dir: 1,
+        spawnX: -7, exitX: 32,
+        color: '#2f6fd0', trailer: '#c9d2dc',
+        wait: 4.2, speed: 5.2, width: 1.6, length: 4.4,
+        delay: 0,
+        /** Optional gate: return false to hold the truck off the road. */
+        canStart: null,
+        /** «STEP-2 HOOK» the moment the truck settles against the dock. */
+        onArrive: null,
+        /** «STEP-2 HOOK» when it pulls away loaded. */
+        onDepart: null
+      }, o));
+
+      this.state = 'idle';
+      this.timer = this.delay;
+      this.px = this.spawnX;      // position along the lane
+      this.bob = 0;
+      this.brake = 0;
+    }
+
+    update(dt) {
+      super.update(dt);
+      this.timer -= dt;
+
+      switch (this.state) {
+        case 'idle':
+          this.px = this.spawnX;
+          // canStart lets the world gate the lane (one rig at a time)
+          if (this.timer <= 0 && (!this.canStart || this.canStart(this))) {
+            this.state = 'inbound';
+          }
+          break;
+
+        case 'inbound': {
+          const remain = (this.dockX - this.px) * this.dir;
+          // ease down over the last 4 units of approach
+          const v = this.speed * M.clamp(remain / 4, 0.14, 1);
+          this.brake = M.damp(this.brake, remain < 4 ? 1 : 0, 6, dt);
+          this.px += this.dir * v * dt;
+          if (remain <= 0.02) {
+            this.px = this.dockX;
+            this.state = 'docked';
+            this.timer = this.wait;
+            if (this.onArrive) this.onArrive(this);
+          }
+          break;
+        }
+
+        case 'docked':
+          this.brake = M.damp(this.brake, 1, 5, dt);
+          if (this.timer <= 0) {
+            this.state = 'outbound';
+            this.brake = 0;
+            if (this.onDepart) this.onDepart(this);
+          }
+          break;
+
+        case 'outbound': {
+          const travelled = Math.abs(this.px - this.dockX);
+          const v = this.speed * M.clamp(0.18 + travelled / 5, 0.18, 1);
+          this.px += this.dir * v * dt;
+          if ((this.dir > 0 && this.px > this.exitX) ||
+            (this.dir < 0 && this.px < this.exitX)) {
+            this.state = 'idle';
+            this.timer = 2 + Math.random() * 3;
+          }
+          break;
+        }
+      }
+
+      const moving = this.state === 'inbound' || this.state === 'outbound';
+      this.bob = moving ? Math.sin(this.age * 22) * 0.012 : M.damp(this.bob, 0, 8, dt);
+      this.moving = moving;
+    }
+
+    collect(rl) {
+      if (this.state === 'idle') return;
+
+      const cxg = this.px, cyg = this.laneY;
+      rl.add(rl.iso.depth(cxg, cyg + this.width / 2, 0, 5), (ctx, iso) => {
+        const dir = this.dir;
+        const L = this.length, W = this.width;
+        const y0 = cyg - W / 2;
+        const z = 0.30 + this.bob;                 // chassis height
+        const front = dir > 0 ? cxg + L / 2 : cxg - L / 2;
+        const cabL = 1.35;
+
+        D.shadow(ctx, iso, cxg - L / 2, y0 - 0.05, L, W + 0.1, 0.38);
+
+        // ---- wheels --------------------------------------------------
+        const axles = [front - dir * 0.55, front - dir * 2.6, front - dir * 3.3];
+        for (const ax of axles) {
+          for (const wy of [y0 + 0.02, y0 + W - 0.24]) {
+            D.box(ctx, iso, {
+              x: ax - 0.22, y: wy, z: 0.02 + this.bob, w: 0.44, d: 0.22,
+              h: 0.3, color: '#14181d', top: '#2a3037'
+            });
+          }
+        }
+
+        // ---- trailer -------------------------------------------------
+        const tRear = dir > 0 ? cxg - L / 2 : cxg + L / 2;
+        const tx = Math.min(tRear, front - dir * cabL);
+        const tw = L - cabL;
+        D.box(ctx, iso, {
+          x: tx, y: y0, z: z, w: tw, d: W, h: 1.15,
+          color: this.trailer, outline: '#5c6672'
+        });
+        // livery stripe
+        D.box(ctx, iso, {
+          x: tx, y: y0 - 0.001, z: z + 0.52, w: tw, d: W + 0.002, h: 0.16,
+          color: this.color, outline: false
+        });
+        // rear door seams
+        const rearX = dir > 0 ? tx : tx + tw;
+        ctx.save(); ctx.globalAlpha = 0.5;
+        D.box(ctx, iso, {
+          x: rearX - (dir > 0 ? 0.02 : 0), y: y0, z: z, w: 0.02, d: W, h: 1.15,
+          color: '#7c848e', outline: false
+        });
+        ctx.restore();
+        // roof rib detail
+        for (let r = 0.3; r < tw - 0.2; r += 0.55) {
+          D.diamond(ctx, iso, tx + r, y0, z + 1.151, 0.06, W, Color.shade(this.trailer, -0.16));
+        }
+
+        // ---- cab -----------------------------------------------------
+        const cx0 = dir > 0 ? front - cabL : front;
+        D.box(ctx, iso, {
+          x: cx0, y: y0, z: z, w: cabL, d: W, h: 0.95, color: this.color
+        });
+        // windshield on the leading face
+        const wx = dir > 0 ? cx0 + cabL - 0.02 : cx0 + 0.02;
+        D.fillPoly(ctx, iso, [
+          [wx, y0 + 0.12, z + 0.9], [wx, y0 + W - 0.12, z + 0.9],
+          [wx, y0 + W - 0.12, z + 0.46], [wx, y0 + 0.12, z + 0.46]
+        ], 'rgba(150,205,235,.55)', 'rgba(20,26,32,.7)', 1);
+        // exhaust stack behind the cab
+        D.cylinder(ctx, iso, dir > 0 ? cx0 - 0.06 : cx0 + cabL + 0.06,
+          y0 + 0.12, z + 0.95, 0.07, 0.55, '#3a4149');
+
+        // ---- lamps ---------------------------------------------------
+        const lampZ = z + 0.34;
+        if (this.moving) {
+          for (const ly of [y0 + 0.25, y0 + W - 0.25]) {
+            D.glow(ctx, iso, wx, ly, lampZ, 13, '#fff3c4', 0.9);
+          }
+        }
+        if (this.brake > 0.05) {
+          const bx = dir > 0 ? tx : tx + tw;
+          for (const ly of [y0 + 0.28, y0 + W - 0.28]) {
+            D.glow(ctx, iso, bx, ly, z + 0.3, 12, '#ff4b3e', this.brake);
+          }
+        }
+        // roof marker lamps
+        ctx.save(); ctx.globalAlpha = 0.7;
+        for (let i = 0; i < 3; i++) {
+          const mx = cx0 + cabL * (0.25 + i * 0.25);
+          D.glow(ctx, iso, mx, y0 + W / 2, z + 0.98, 5, '#ffb347', 0.55);
+        }
+        ctx.restore();
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  LoadingDock — raised platform, bumpers, door, status light          */
+  /* =================================================================== */
+  class LoadingDock extends Entity {
+    constructor(o) {
+      super(Object.assign({
+        tag: 'dock', w: 3.2, d: 1.6, h: 0.55,
+        color: '#39424e', watch: null   // a Truck whose state drives the light
+      }, o));
+    }
+
+    collect(rl) {
+      rl.add(rl.iso.depth(this.x, this.y + this.d, 0, 2), (ctx, iso) => {
+        D.shadow(ctx, iso, this.x, this.y, this.w, this.d, 0.3);
+        // apron
+        D.box(ctx, iso, {
+          x: this.x, y: this.y, z: 0, w: this.w, d: this.d, h: this.h,
+          color: this.color, top: '#4a5462'
+        });
+        // hazard stripes along the lip
+        for (let s = 0; s < this.w; s += 0.4) {
+          D.diamond(ctx, iso, this.x + s, this.y + this.d - 0.18, this.h + 0.002,
+            0.2, 0.18, ((s * 2.5) | 0) % 2 ? '#ffc832' : '#22282f');
+        }
+        // rubber bumpers
+        for (const bx of [this.x + 0.4, this.x + this.w - 0.7]) {
+          D.box(ctx, iso, {
+            x: bx, y: this.y + this.d - 0.06, z: 0.18, w: 0.3, d: 0.08,
+            h: 0.2, color: '#15191e'
+          });
+        }
+        // back wall + shutter
+        D.box(ctx, iso, {
+          x: this.x - 0.12, y: this.y - 0.35, z: 0, w: this.w + 0.24, d: 0.35,
+          h: 2.1, color: '#2b333d'
+        });
+        D.fillPoly(ctx, iso, [
+          [this.x + 0.35, this.y, 1.85], [this.x + this.w - 0.35, this.y, 1.85],
+          [this.x + this.w - 0.35, this.y, 0.02], [this.x + 0.35, this.y, 0.02]
+        ], '#171c22', '#0e1216', 1);
+        for (let zz = 0.15; zz < 1.8; zz += 0.22) {
+          D.fillPoly(ctx, iso, [
+            [this.x + 0.35, this.y, zz], [this.x + this.w - 0.35, this.y, zz]
+          ], null, 'rgba(255,255,255,.05)', 1.5);
+        }
+
+        // status lamp — green when a truck is berthed
+        const docked = this.watch && this.watch.state === 'docked';
+        const col = docked ? '#63f08a' : '#ff8a3d';
+        const pulse = docked ? 1 : 0.4 + 0.35 * Math.sin(this.age * 4);
+        D.box(ctx, iso, {
+          x: this.x + this.w / 2 - 0.09, y: this.y - 0.02, z: 1.9,
+          w: 0.18, d: 0.1, h: 0.18, color: '#20262d'
+        });
+        D.glow(ctx, iso, this.x + this.w / 2, this.y, 2.0, 14, col, pulse);
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  CrateStack — warehouse pallets of boxes                            */
+  /* =================================================================== */
+  class CrateStack extends Entity {
+    constructor(o) {
+      super(Object.assign({
+        tag: 'crates', cols: 2, rows: 2, levels: 3, seed: 1,
+        color: '#b57c3f'
+      }, o));
+    }
+
+    collect(rl) {
+      rl.add(rl.iso.depth(this.x, this.y, 0, 2), (ctx, iso) => {
+        const w = this.cols * 0.8, d = this.rows * 0.8;
+        D.shadow(ctx, iso, this.x - 0.06, this.y - 0.06, w + 0.12, d + 0.12, 0.34);
+
+        // pallet
+        D.box(ctx, iso, {
+          x: this.x - 0.05, y: this.y - 0.05, z: 0, w: w + 0.1, d: d + 0.1,
+          h: 0.12, color: '#6d5334'
+        });
+
+        for (let l = 0; l < this.levels; l++) {
+          for (let cx = 0; cx < this.cols; cx++) {
+            for (let cy = 0; cy < this.rows; cy++) {
+              const n = M.hash(this.seed + cx * 4.1 + l * 9.3, cy * 2.7 + l * 5.5);
+              if (l === this.levels - 1 && n > 0.68) continue;    // ragged top
+              const jx = (n - 0.5) * 0.05, jy = (M.hash(n * 91, l) - 0.5) * 0.05;
+              const col = Color.shade(this.color, (n - 0.5) * 0.22);
+              const bx = this.x + cx * 0.8 + jx, by = this.y + cy * 0.8 + jy;
+              const bz = 0.12 + l * 0.7;
+              D.box(ctx, iso, {
+                x: bx, y: by, z: bz, w: 0.74, d: 0.74, h: 0.68, color: col
+              });
+              // banding
+              D.diamond(ctx, iso, bx, by + 0.34, bz + 0.681, 0.74, 0.06,
+                'rgba(0,0,0,.28)');
+              if (n > 0.55) {
+                D.fillPoly(ctx, iso, [
+                  [bx + 0.2, by + 0.74, bz + 0.5], [bx + 0.54, by + 0.74, bz + 0.5],
+                  [bx + 0.54, by + 0.74, bz + 0.26], [bx + 0.2, by + 0.74, bz + 0.26]
+                ], 'rgba(240,232,210,.55)', null, 0);
+              }
+            }
+          }
+        }
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  Generator — machine block, spinning fan, pipes, exhaust puffs      */
+  /* =================================================================== */
+  class Generator extends Entity {
+    constructor(o) {
+      super(Object.assign({
+        tag: 'generator', w: 2.2, d: 1.6, h: 1.25,
+        color: '#4a5563', accent: '#ffc832', rpm: 2.4
+      }, o));
+      this.fan = 0;
+      this.puffs = [];
+      this.puffTimer = 0;
+    }
+
+    update(dt) {
+      super.update(dt);
+      if (this.active) this.fan += dt * this.rpm * Math.PI * 2;
+
+      this.puffTimer -= dt;
+      if (this.active && this.puffTimer <= 0) {
+        this.puffTimer = 0.42 + Math.random() * 0.3;
+        this.puffs.push({
+          x: this.x + this.w - 0.35, y: this.y + 0.3,
+          z: this.h + 0.75, life: 0, max: 2.4,
+          r: 5 + Math.random() * 4, drift: (Math.random() - 0.5) * 0.25
+        });
+      }
+      for (let i = this.puffs.length - 1; i >= 0; i--) {
+        const p = this.puffs[i];
+        p.life += dt;
+        p.z += dt * 0.42;
+        p.x += p.drift * dt;
+        if (p.life > p.max) this.puffs.splice(i, 1);
+      }
+    }
+
+    collect(rl) {
+      rl.add(rl.iso.depth(this.x, this.y, 0, 2), (ctx, iso) => {
+        const c = this.color;
+        D.shadow(ctx, iso, this.x, this.y, this.w, this.d, 0.36);
+
+        // skid frame
+        D.box(ctx, iso, {
+          x: this.x - 0.08, y: this.y - 0.08, z: 0, w: this.w + 0.16,
+          d: this.d + 0.16, h: 0.14, color: '#2b323b'
+        });
+        // main housing
+        D.box(ctx, iso, {
+          x: this.x, y: this.y, z: 0.14, w: this.w, d: this.d, h: this.h, color: c
+        });
+        // louvred vents on the front face
+        for (let i = 0; i < 5; i++) {
+          const vz = 0.34 + i * 0.16;
+          D.fillPoly(ctx, iso, [
+            [this.x + 0.2, this.y + this.d, vz], [this.x + this.w - 0.2, this.y + this.d, vz],
+            [this.x + this.w - 0.2, this.y + this.d, vz - 0.08],
+            [this.x + 0.2, this.y + this.d, vz - 0.08]
+          ], Color.shade(c, -0.34), null, 0);
+        }
+        // accent band — side faces only, so the top stays a metal deck
+        const bz0 = 0.14 + this.h - 0.26, bz1 = bz0 + 0.12;
+        D.fillPoly(ctx, iso, [
+          [this.x, this.y + this.d, bz1], [this.x + this.w, this.y + this.d, bz1],
+          [this.x + this.w, this.y + this.d, bz0], [this.x, this.y + this.d, bz0]
+        ], Color.shade(this.accent, -0.10), null, 0);
+        D.fillPoly(ctx, iso, [
+          [this.x + this.w, this.y, bz1], [this.x + this.w, this.y + this.d, bz1],
+          [this.x + this.w, this.y + this.d, bz0], [this.x + this.w, this.y, bz0]
+        ], Color.shade(this.accent, -0.34), null, 0);
+
+        // ---- fan on the top deck, drawn in screen space -------------
+        const fcx = this.x + this.w * 0.32, fcy = this.y + this.d * 0.5;
+        const topZ = 0.14 + this.h;
+        const FX = iso.x(fcx, fcy), FY = iso.y(fcx, fcy, topZ);
+        const rx = 0.42 * iso.hw, ry = 0.42 * iso.hh;
+        ctx.save();
+        ctx.beginPath(); ctx.ellipse(FX, FY, rx, ry, 0, 0, 6.2832);
+        ctx.fillStyle = '#191d23'; ctx.fill();
+        ctx.strokeStyle = Color.shade(c, -0.5); ctx.lineWidth = 2; ctx.stroke();
+        ctx.beginPath();
+        for (let b = 0; b < 5; b++) {
+          const a0 = this.fan + (b / 5) * 6.2832;
+          ctx.moveTo(FX, FY);
+          ctx.lineTo(FX + Math.cos(a0) * rx * 0.92, FY + Math.sin(a0) * ry * 0.92);
+          ctx.lineTo(FX + Math.cos(a0 + 0.55) * rx * 0.7, FY + Math.sin(a0 + 0.55) * ry * 0.7);
+          ctx.closePath();
+        }
+        ctx.fillStyle = 'rgba(160,178,198,.55)'; ctx.fill();
+        ctx.beginPath(); ctx.ellipse(FX, FY, rx * 0.16, ry * 0.16, 0, 0, 6.2832);
+        ctx.fillStyle = '#5a636e'; ctx.fill();
+        ctx.restore();
+
+        // ---- exhaust stack + pipes ---------------------------------
+        D.cylinder(ctx, iso, this.x + this.w - 0.35, this.y + 0.3, topZ, 0.16, 0.75, '#39414b');
+        D.cylinder(ctx, iso, this.x + this.w - 0.35, this.y + 0.3, topZ + 0.75, 0.2, 0.08, '#22282f');
+        D.box(ctx, iso, {
+          x: this.x + 0.25, y: this.y - 0.22, z: 0.2, w: 0.16, d: 0.22,
+          h: this.h * 0.8, color: '#77808c'
+        });
+
+        // ---- gauges + status lamp ----------------------------------
+        const live = this.active;
+        const lamp = live ? '#7dffb0' : '#ff5f56';
+        const blink = live ? 0.6 + 0.4 * Math.sin(this.age * 5 + this.x) : 0.3;
+        D.glow(ctx, iso, this.x + 0.2, this.y + this.d, 0.14 + this.h - 0.1, 10, lamp, blink);
+        ctx.save();
+        ctx.globalAlpha = 0.8;
+        D.fillPoly(ctx, iso, [
+          [this.x + 0.45, this.y + this.d, 1.0], [this.x + 0.85, this.y + this.d, 1.0],
+          [this.x + 0.85, this.y + this.d, 0.72], [this.x + 0.45, this.y + this.d, 0.72]
+        ], '#101418', 'rgba(0,0,0,.6)', 1);
+        const needle = 0.45 + 0.28 * (0.5 + 0.5 * Math.sin(this.age * 3.1 + this.y));
+        D.fillPoly(ctx, iso, [
+          [this.x + 0.48, this.y + this.d, 0.78],
+          [this.x + 0.48 + needle * 0.7, this.y + this.d, 0.78]
+        ], null, live ? '#7dffb0' : '#5a6470', 2);
+        ctx.restore();
+      });
+
+      // ---- steam, above everything nearby --------------------------
+      for (const p of this.puffs) {
+        rl.add(rl.iso.depth(p.x, p.y, p.z, 9), (ctx, iso) => {
+          const k = p.life / p.max;
+          const X = iso.x(p.x, p.y), Y = iso.y(p.x, p.y, p.z);
+          ctx.save();
+          ctx.globalAlpha = (1 - k) * 0.22;
+          ctx.beginPath();
+          ctx.arc(X, Y, p.r * (1 + k * 2.4), 0, 6.2832);
+          ctx.fillStyle = '#cfe0f0'; ctx.fill();
+          ctx.restore();
+        });
+      }
+    }
+  }
+
+  /* =================================================================== */
+  /*  Silo — background storage tank                                     */
+  /* =================================================================== */
+  class Silo extends Entity {
+    constructor(o) {
+      super(Object.assign({
+        tag: 'silo', r: 0.85, h: 3.2, color: '#8d97a4', fill: 0.62
+      }, o));
+    }
+    collect(rl) {
+      rl.add(rl.iso.depth(this.x, this.y, 0, 2), (ctx, iso) => {
+        D.shadow(ctx, iso, this.x - this.r, this.y - this.r, this.r * 2, this.r * 2, 0.34);
+        // legs
+        for (const [ox, oy] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) {
+          D.box(ctx, iso, {
+            x: this.x + ox * this.r - 0.06, y: this.y + oy * this.r - 0.06,
+            z: 0, w: 0.12, d: 0.12, h: 0.5, color: '#39414b'
+          });
+        }
+        D.cylinder(ctx, iso, this.x, this.y, 0.5, this.r, this.h, this.color);
+        // hoop bands
+        for (let zz = 0.9; zz < this.h + 0.4; zz += 0.8) {
+          ctx.save(); ctx.globalAlpha = 0.35;
+          const X = iso.x(this.x, this.y), Y = iso.y(this.x, this.y, zz);
+          ctx.beginPath();
+          ctx.ellipse(X, Y, this.r * iso.hw, this.r * iso.hh, 0, 0, Math.PI);
+          ctx.strokeStyle = '#20262d'; ctx.lineWidth = 2; ctx.stroke();
+          ctx.restore();
+        }
+        // level indicator
+        const lz = 0.5 + this.h * this.fill;
+        ctx.save(); ctx.globalAlpha = 0.5;
+        D.fillPoly(ctx, iso, [
+          [this.x - this.r * 0.1, this.y + this.r, lz],
+          [this.x + this.r * 0.1, this.y + this.r, lz],
+          [this.x + this.r * 0.1, this.y + this.r, 0.6],
+          [this.x - this.r * 0.1, this.y + this.r, 0.6]
+        ], '#ffc832', null, 0);
+        ctx.restore();
+        // cap + beacon
+        D.cylinder(ctx, iso, this.x, this.y, 0.5 + this.h, this.r * 0.45, 0.28, '#5f6a77');
+        D.glow(ctx, iso, this.x, this.y, 0.5 + this.h + 0.35, 9, '#ff5f56',
+          0.35 + 0.35 * Math.sin(this.age * 3));
+      });
+    }
+  }
+
+  /* =================================================================== */
+  /*  FloorLight — pole lamp that pools light on the deck                */
+  /* =================================================================== */
+  class FloorLight extends Entity {
+    constructor(o) { super(Object.assign({ tag: 'light', h: 3.0, color: '#ffd98a' }, o)); }
+    collect(rl) {
+      rl.add(rl.iso.depth(this.x, this.y, 0, 2), (ctx, iso) => {
+        ctx.save();
+        ctx.globalAlpha = 0.10;
+        D.diamond(ctx, iso, this.x - 1.6, this.y - 1.6, 0.012, 3.2, 3.2, this.color);
+        ctx.globalAlpha = 0.10;
+        D.diamond(ctx, iso, this.x - 1.0, this.y - 1.0, 0.014, 2.0, 2.0, this.color);
+        ctx.restore();
+        D.box(ctx, iso, { x: this.x - 0.14, y: this.y - 0.14, z: 0, w: 0.28, d: 0.28, h: 0.12, color: '#333b45' });
+        D.cylinder(ctx, iso, this.x, this.y, 0.12, 0.08, this.h, '#48515c');
+        D.box(ctx, iso, {
+          x: this.x - 0.22, y: this.y - 0.18, z: this.h, w: 0.44, d: 0.36, h: 0.14,
+          color: '#5a636e', top: Color.alpha(this.color, 0.9)
+        });
+        D.glow(ctx, iso, this.x, this.y, this.h + 0.02, 26, this.color, 0.5);
+      });
+    }
+  }
+
+  /* =================================================================== */
+  global.ENTITIES = {
+    Entity, Ground, Conveyor, RobotArm, Truck,
+    LoadingDock, CrateStack, Generator, Silo, FloorLight, ITEM_KINDS
+  };
+})(window);
+
+/* ===== js/engine.js ================================================== */
+/* =====================================================================
+   engine.js — canvas lifecycle, camera/input, the depth-sorted render
+   list, the fixed-step simulation loop, and the Step-1 factory layout.
+   ---------------------------------------------------------------------
+   PUBLIC API (what Step 2 will build on)
+
+     const g = window.GAME;
+     g.iso                     projection (grid ⇄ screen)
+     g.camera                  pan / zoom / auto-fit
+     g.entities                live entity array
+     g.add(entity)             insert (returns the entity)
+     g.remove(entity|id)       delete
+     g.byTag('conveyor')       lookup by tag
+     g.pick(clientX, clientY)  screen px → {gx, gy, fx, fy} on the floor
+                               plane (integer tile + the exact float), or
+                               null when the point is off the plate
+     g.paused = true|false
+     g.onTick = (dt, time)=>{} fixed-step economy hook, 60 Hz
+     g.onRender = (ctx, viewW, viewH) => {}
+                               screen-space overlay hook, drawn last with
+                               the camera transform removed
+     g.onTileClick = ({gx, gy, fx, fy}) => {}   tap on a floor tile
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const { Iso, Camera, M } = global.ISO;
+  const E = global.ENTITIES;
+
+  const STEP = 1 / 60;         // fixed simulation step (seconds)
+  const MAX_STEPS = 5;         // spiral-of-death guard after a tab stall
+
+  /* =================================================================== */
+  /*  RenderList — collects draw commands, sorts them by depth           */
+  /* =================================================================== */
+  class RenderList {
+    constructor(iso) {
+      this.iso = iso;
+      this.pool = [];
+      this.n = 0;
+    }
+
+    begin() { this.n = 0; }
+
+    add(depth, fn) {
+      let it = this.pool[this.n];
+      if (it) { it.d = depth; it.i = this.n; it.fn = fn; }
+      else this.pool[this.n] = { d: depth, i: this.n, fn };
+      this.n++;
+    }
+
+    flush(ctx) {
+      const list = this.pool.slice(0, this.n);
+      // painter's algorithm; index breaks ties so the order is stable
+      list.sort((a, b) => (a.d - b.d) || (a.i - b.i));
+      const iso = this.iso;
+      for (let k = 0; k < list.length; k++) {
+        ctx.save();
+        list[k].fn(ctx, iso);
+        ctx.restore();
+      }
+      return list.length;
+    }
+  }
+
+  /* =================================================================== */
+  /*  Engine                                                             */
+  /* =================================================================== */
+  class Engine {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
+      this.iso = new Iso(64, 32, 32);
+      this.camera = new Camera();
+      this.rl = new RenderList(this.iso);
+
+      this.entities = [];
+      this.paused = false;
+      this.time = 0;
+      this.dpr = 1;
+      this.viewW = 1; this.viewH = 1;
+
+      this.world = { w: 24, d: 21, headroom: 4.6 };
+      this.ground = null;
+
+      this.onTick = null;      // «STEP-2 HOOK» economy update
+      this.onRender = null;    // «STEP-2 HOOK» screen-space overlay
+
+      this._acc = 0;
+      this._last = 0;
+      this._frames = 0; this._fpsClock = 0; this.fps = 0; this.drawCalls = 0;
+      this._raf = 0;
+
+      this._bindDom();
+      this._bindInput();
+      this.resize();
+    }
+
+    /* ------------------------------------------------------ entities */
+    add(e) { this.entities.push(e); return e; }
+
+    remove(target) {
+      const id = typeof target === 'string' ? target : target && target.id;
+      const i = this.entities.findIndex(e => e.id === id);
+      if (i >= 0) this.entities.splice(i, 1);
+      return i >= 0;
+    }
+
+    byTag(tag) { return this.entities.filter(e => e.tag === tag); }
+
+    /* -------------------------------------------------------- canvas */
+    _bindDom() {
+      this.hud = {
+        fps: document.getElementById('stat-fps'),
+        draws: document.getElementById('stat-draws'),
+        ents: document.getElementById('stat-ents'),
+        zoom: document.getElementById('stat-zoom')
+      };
+    }
+
+    /** Screen-space bounding box of the world at zoom 1. */
+    worldBounds() {
+      const iso = this.iso, W = this.world.w, D = this.world.d;
+      return {
+        minX: iso.x(0, D), maxX: iso.x(W, 0),
+        minY: iso.y(0, 0, this.world.headroom), maxY: iso.y(W, D, -0.6)
+      };
+    }
+
+    resize() {
+      const c = this.canvas;
+      const rect = c.getBoundingClientRect();
+      const dpr = Math.min(global.devicePixelRatio || 1, 2.5);
+      const w = Math.max(1, Math.round(rect.width));
+      const h = Math.max(1, Math.round(rect.height));
+
+      this.viewW = w; this.viewH = h; this.dpr = dpr;
+      const bw = Math.round(w * dpr), bh = Math.round(h * dpr);
+      if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+
+      this.camera.fit(w, h, this.worldBounds(), 0.88);
+      if (!this._booted) { this.camera.snap(); this._booted = true; }
+    }
+
+    /* --------------------------------------------------------- input */
+    _bindInput() {
+      const c = this.canvas, cam = this.camera;
+      let dragging = false, lastX = 0, lastY = 0, moved = 0;
+
+      const ro = new ResizeObserver(() => this.resize());
+      ro.observe(c);
+      global.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 120));
+
+      c.addEventListener('pointerdown', ev => {
+        dragging = true; moved = 0;
+        lastX = ev.clientX; lastY = ev.clientY;
+        c.setPointerCapture(ev.pointerId);
+        c.classList.add('dragging');
+      });
+
+      c.addEventListener('pointermove', ev => {
+        if (dragging) {
+          const dx = ev.clientX - lastX, dy = ev.clientY - lastY;
+          lastX = ev.clientX; lastY = ev.clientY;
+          moved += Math.abs(dx) + Math.abs(dy);
+          cam.pan(dx, dy);
+        }
+        this.hoverAt(ev.clientX, ev.clientY);
+      });
+
+      const end = ev => {
+        if (!dragging) return;
+        dragging = false;
+        c.classList.remove('dragging');
+        if (c.hasPointerCapture && c.hasPointerCapture(ev.pointerId)) {
+          c.releasePointerCapture(ev.pointerId);
+        }
+        // «STEP-2 HOOK» a short press is a tap on the tile under the cursor
+        if (moved < 6 && this.onTileClick) {
+          const g = this.pick(ev.clientX, ev.clientY);
+          if (g) this.onTileClick(g);
+        }
+      };
+      c.addEventListener('pointerup', end);
+      c.addEventListener('pointercancel', end);
+      c.addEventListener('pointerleave', () => { if (this.ground) this.ground.hover = null; });
+
+      c.addEventListener('wheel', ev => {
+        ev.preventDefault();
+        const r = c.getBoundingClientRect();
+        cam.zoomAt(ev.clientX - r.left, ev.clientY - r.top,
+          Math.pow(0.999, ev.deltaY * (ev.deltaMode === 1 ? 18 : 1)));
+      }, { passive: false });
+
+      global.addEventListener('keydown', ev => {
+        const k = ev.key.toLowerCase();
+        if (k === 'f') { cam.reset(); }
+        else if (k === 'g') { if (this.ground) this.ground.showGrid = !this.ground.showGrid; }
+        else if (k === ' ') { ev.preventDefault(); this.paused = !this.paused; }
+      });
+
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) this._last = performance.now();   // drop the gap
+      });
+    }
+
+    /** Canvas-relative screen px → floor grid coords (null if off-plate). */
+    pick(clientX, clientY) {
+      const r = this.canvas.getBoundingClientRect();
+      const w = this.camera.toWorld(clientX - r.left, clientY - r.top);
+      const g = this.iso.unproject(w.x, w.y, 0);
+      const gx = Math.floor(g.gx), gy = Math.floor(g.gy);
+      if (gx < 0 || gy < 0 || gx >= this.world.w || gy >= this.world.d) return null;
+      return { gx, gy, fx: g.gx, fy: g.gy };
+    }
+
+    hoverAt(clientX, clientY) {
+      if (!this.ground) return;
+      this.ground.hover = this.pick(clientX, clientY);
+    }
+
+    /* ----------------------------------------------------------- loop */
+    start() {
+      this._last = performance.now();
+      const frame = ts => {
+        this._raf = requestAnimationFrame(frame);
+        let dt = (ts - this._last) / 1000;
+        this._last = ts;
+        if (!(dt > 0)) dt = 0;
+        if (dt > 0.25) dt = 0.25;          // clamp after a stall
+
+        // ---- fixed-step simulation -------------------------------
+        if (!this.paused) {
+          this._acc += dt;
+          let steps = 0;
+          while (this._acc >= STEP && steps < MAX_STEPS) {
+            this._acc -= STEP; steps++;
+            this.time += STEP;
+            for (let i = 0; i < this.entities.length; i++) {
+              const e = this.entities[i];
+              if (e.update) e.update(STEP, this.time);
+            }
+            if (this.onTick) this.onTick(STEP, this.time);
+          }
+          if (steps === MAX_STEPS) this._acc = 0;
+        }
+
+        this.camera.update(dt);
+        this.render();
+
+        // ---- diagnostics -----------------------------------------
+        this._frames++; this._fpsClock += dt;
+        if (this._fpsClock >= 0.5) {
+          this.fps = Math.round(this._frames / this._fpsClock);
+          this._frames = 0; this._fpsClock = 0;
+          if (this.hud.fps) {
+            this.hud.fps.textContent = this.fps;
+            this.hud.draws.textContent = this.drawCalls;
+            this.hud.ents.textContent = this.entities.length;
+            this.hud.zoom.textContent = this.camera.zoom.toFixed(2);
+          }
+        }
+      };
+      this._raf = requestAnimationFrame(frame);
+      return this;
+    }
+
+    stop() { cancelAnimationFrame(this._raf); }
+
+    /* --------------------------------------------------------- render */
+    render() {
+      const ctx = this.ctx, cam = this.camera;
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#080b10';
+      ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      ctx.translate(cam.x, cam.y);
+      ctx.scale(cam.zoom, cam.zoom);
+
+      const rl = this.rl;
+      rl.begin();
+      for (let i = 0; i < this.entities.length; i++) {
+        const e = this.entities[i];
+        if (e.collect) e.collect(rl);
+      }
+      this.drawCalls = rl.flush(ctx);
+
+      // screen-space pass (no camera transform) — Step 2 overlays
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      if (this.paused) this._drawPaused(ctx);
+      if (this.onRender) this.onRender(ctx, this.viewW, this.viewH);
+    }
+
+    _drawPaused(ctx) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(6,9,13,.45)';
+      ctx.fillRect(0, 0, this.viewW, this.viewH);
+      ctx.fillStyle = '#ffc832';
+      ctx.font = '700 13px "JetBrains Mono", ui-monospace, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('❚❚  PAUSED', this.viewW / 2, this.viewH / 2);
+      ctx.restore();
+    }
+  }
+
+  /* =================================================================== */
+  /*  Factory layout — the Step-1 showcase scene                         */
+  /* =================================================================== */
+  function buildFactory(g) {
+    const W = g.world.w, D = g.world.d;
+
+    // ---- floor, road markings ---------------------------------------
+    const ground = new E.Ground({
+      w: W, d: D,
+      road: { x0: -12, x1: W + 14, y: 17.0, d: 2.4 },
+      marks: [
+        { x: 2.0, y: 12.6, w: 18, d: 0.08 },
+        { x: 2.0, y: 14.0, w: 18, d: 0.08 },
+        { x: 3.0, y: 14.2, w: 3.2, d: 1.0, color: '#63f08a' },
+        { x: 12.0, y: 14.2, w: 3.2, d: 1.0, color: '#63f08a' }
+      ]
+    });
+    g.ground = g.add(ground);
+
+    // ---- production lines -------------------------------------------
+    // B: raw feed running right-to-left across the hall
+    const beltB = g.add(new E.Conveyor({
+      x: 18.5, y: 9.0, len: 15, dir: '-x', speed: 1.35, spacing: 1.15
+    }));
+    // A: finished goods running left-to-right toward the docks
+    const beltA = g.add(new E.Conveyor({
+      x: 2.0, y: 13.2, len: 16, dir: '+x', speed: 1.05, spacing: 1.4
+    }));
+    // C: feeder dropping stock onto belt B
+    const beltC = g.add(new E.Conveyor({
+      x: 6.6, y: 3.4, len: 5, dir: '+y', speed: 1.5, spacing: 1.0
+    }));
+
+    // ---- transfer arms straddling the two lines ---------------------
+    const armY = 11.15;
+    [[6.2, 0.00], [10.4, 0.33], [14.6, 0.66]].forEach(([ax, ph], i) => {
+      g.add(new E.RobotArm({
+        x: ax, y: armY, phase: ph, cycle: 3.2 + i * 0.25,
+        pick: [ax, 9.0, 0.52],
+        place: [ax, 13.2, 0.52],
+        payloadColor: ['#5aa9e6', '#8ad07a', '#d46f6f'][i]
+      }));
+    });
+
+    // palletiser lifting finished goods from belt A onto the dock apron
+    g.add(new E.RobotArm({
+      x: 16.9, y: 15.4, phase: 0.5, cycle: 3.8,
+      L1: 1.35, L2: 1.15,
+      pick: [16.9, 13.4, 0.52],
+      place: [15.0, 15.9, 1.05],
+      payloadColor: '#c98f4b'
+    }));
+
+    // ---- loading docks + truck traffic ------------------------------
+    const dock1 = g.add(new E.LoadingDock({ x: 3.0, y: 15.2 }));
+    const dock2 = g.add(new E.LoadingDock({ x: 12.0, y: 15.2 }));
+
+    const truckA = g.add(new E.Truck({
+      laneY: 18.2, dockX: 4.6, dir: 1, spawnX: -9, exitX: W + 11,
+      color: '#2f6fd0', wait: 5.0, delay: 1.0
+    }));
+    const truckB = g.add(new E.Truck({
+      laneY: 18.2, dockX: 13.6, dir: 1, spawnX: -9, exitX: W + 11,
+      color: '#c8503f', trailer: '#d8dee6', wait: 4.4, delay: 9.0
+    }));
+    // one lane, two rigs: nobody pulls out until the road is clear
+    truckA.canStart = () => truckB.state === 'idle';
+    truckB.canStart = () => truckA.state === 'idle';
+    dock1.watch = truckA;
+    dock2.watch = truckB;
+
+    // ---- power row along the back wall ------------------------------
+    g.add(new E.Generator({ x: 2.2, y: 0.5, rpm: 2.2 }));
+    g.add(new E.Generator({ x: 9.6, y: 0.5, rpm: 2.9, accent: '#5aa9e6' }));
+    g.add(new E.Generator({ x: 13.0, y: 0.5, rpm: 1.8 }));
+    g.add(new E.Silo({ x: 17.6, y: 1.3, fill: 0.72 }));
+    g.add(new E.Silo({ x: 19.8, y: 1.3, r: 0.7, h: 2.6, fill: 0.44, color: '#7d8794' }));
+
+    // ---- warehouse stock --------------------------------------------
+    g.add(new E.CrateStack({ x: 20.6, y: 5.0, cols: 2, rows: 2, levels: 3, seed: 3 }));
+    g.add(new E.CrateStack({ x: 20.6, y: 8.2, cols: 2, rows: 3, levels: 2, seed: 11, color: '#a5713a' }));
+    g.add(new E.CrateStack({ x: 0.7, y: 5.4, cols: 2, rows: 2, levels: 2, seed: 7 }));
+    g.add(new E.CrateStack({ x: 0.7, y: 8.4, cols: 2, rows: 2, levels: 3, seed: 23, color: '#9a8a54' }));
+    g.add(new E.CrateStack({ x: 19.9, y: 15.4, cols: 2, rows: 2, levels: 2, seed: 31 }));
+    g.add(new E.CrateStack({ x: 7.4, y: 15.6, cols: 3, rows: 1, levels: 2, seed: 41, color: '#8f6a3c' }));
+
+    // ---- lighting rig -------------------------------------------------
+    g.add(new E.FloorLight({ x: 0.6, y: 11.6 }));
+    g.add(new E.FloorLight({ x: 22.4, y: 11.6 }));
+    g.add(new E.FloorLight({ x: 8.6, y: 16.6, h: 3.4 }));
+    g.add(new E.FloorLight({ x: 22.4, y: 2.6, h: 2.6 }));
+
+    return g;
+  }
+
+  /* =================================================================== */
+  /*  Boot                                                               */
+  /* =================================================================== */
+  function boot() {
+    const canvas = document.getElementById('factory-canvas');
+    const engine = new Engine(canvas);
+    buildFactory(engine);
+    engine.resize();
+    engine.camera.snap();
+    engine.start();
+    global.GAME = engine;
+    return engine;
+  }
+
+  global.FactoryEngine = { Engine, RenderList, buildFactory, boot };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})(window);
+
+/* ===== js/products.js ================================================ */
+/* =====================================================================
+   products.js — the static content layer: product registry, the four
+   upgrade axes, the level curve, and the objective chain.
+   ---------------------------------------------------------------------
+   Everything here is DATA plus pure functions. No state, no DOM, no
+   canvas. economy.js owns the mutable save; binding.js pushes it at the
+   renderer. Rebalancing the game means editing this file and nothing else.
+
+   INCOME MODEL
+     throughput(units/min) = base.rate  × speed × supply × robot
+     value($/unit)         = base.value × quality × global
+     income($/min)         = throughput × value
+
+     Speed / Supply / Robot are unbounded levels with additive multipliers
+     and exponential costs — the classic idle curve where each level buys
+     slightly less than the last. Parts Quality is the discrete 1–5 star
+     axis: rare, expensive, and the only lever on unit VALUE, so it stays
+     the interesting decision rather than a fifth throughput slider.
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const HOUR = 3600, DAY = 86400;
+
+  /* =================================================================== */
+  /*  Product registry — 8 lines, tier 0 → 7                             */
+  /* =================================================================== */
+  /**
+   * rate      units/min at level 1, all axes at base
+   * value     $ per unit before quality
+   * unlockLv  player level required before the line can be bought
+   * unlockCost cash price to open the line
+   * palette   belt payload colours — binding.js feeds these to the engine
+   * xp        xp granted per unit produced
+   */
+  const PRODUCTS = [
+    {
+      id: 'shirt', name: 'SHIRT', short: 'SHT', tier: 0,
+      blurb: 'Cotton basics. Everybody needs one.',
+      rate: 6.0, value: 1.2, unlockLv: 1, unlockCost: 0, xp: 1,
+      accent: '#e6e2d8',
+      palette: [
+        { color: '#e6e2d8', size: 0.34 }, { color: '#c8d6e5', size: 0.30 },
+        { color: '#f0c6c6', size: 0.32 }
+      ]
+    },
+    {
+      id: 'kicks', name: 'Fly Kicks', short: 'FKS', tier: 1,
+      blurb: 'Injection-moulded soles, questionable branding.',
+      rate: 5.4, value: 9, unlockLv: 3, unlockCost: 1.5e3, xp: 3,
+      accent: '#ff6b4a',
+      palette: [
+        { color: '#ff6b4a', size: 0.33 }, { color: '#2ec4b6', size: 0.30 },
+        { color: '#f7f7f7', size: 0.31 }
+      ]
+    },
+    {
+      id: 'rayblock', name: 'Ray Block', short: 'RYB', tier: 2,
+      blurb: 'Polarised lenses. Legally distinct from anything.',
+      rate: 5.0, value: 62, unlockLv: 6, unlockCost: 2.2e4, xp: 8,
+      accent: '#5bc0eb',
+      palette: [
+        { color: '#1f2833', size: 0.30 }, { color: '#5bc0eb', size: 0.28 },
+        { color: '#ffd166', size: 0.29 }
+      ]
+    },
+    {
+      id: 'smellcohol', name: 'Smellcohol', short: 'SML', tier: 3,
+      blurb: 'Eau de industrial solvent. Wildly popular.',
+      rate: 4.6, value: 430, unlockLv: 10, unlockCost: 3.0e5, xp: 20,
+      accent: '#b892ff',
+      palette: [
+        { color: '#b892ff', size: 0.28 }, { color: '#ffd6e0', size: 0.30 },
+        { color: '#7ae7c7', size: 0.27 }
+      ]
+    },
+    {
+      id: 'pumps', name: 'Pumps', short: 'PMP', tier: 4,
+      blurb: 'Hand-finished heels at machine speed.',
+      rate: 4.2, value: 3.1e3, unlockLv: 15, unlockCost: 4.2e6, xp: 55,
+      accent: '#d64550',
+      palette: [
+        { color: '#d64550', size: 0.32 }, { color: '#2b2b2b', size: 0.29 },
+        { color: '#e8c07d', size: 0.30 }
+      ]
+    },
+    {
+      id: 'diveclock', name: 'Dive Clock', short: 'DVC', tier: 5,
+      blurb: '300 m rated. Never leaves the office.',
+      rate: 3.8, value: 2.3e4, unlockLv: 21, unlockCost: 6.0e7, xp: 150,
+      accent: '#ffb703',
+      palette: [
+        { color: '#0f4c81', size: 0.29 }, { color: '#c0c0c0', size: 0.27 },
+        { color: '#ffb703', size: 0.28 }
+      ]
+    },
+    {
+      id: 'strap', name: 'Strap', short: 'STP', tier: 6,
+      blurb: 'The margin was always in the accessories.',
+      rate: 3.4, value: 1.8e5, unlockLv: 28, unlockCost: 9.0e8, xp: 420,
+      accent: '#c9ada7',
+      palette: [
+        { color: '#6b4226', size: 0.28 }, { color: '#2f3e46', size: 0.26 },
+        { color: '#c9ada7', size: 0.29 }
+      ]
+    },
+    {
+      id: 'drone', name: 'Drone', short: 'DRN', tier: 7,
+      blurb: 'Ships itself. Vertical integration, finally.',
+      rate: 3.0, value: 1.5e6, unlockLv: 36, unlockCost: 1.4e10, xp: 1200,
+      accent: '#ef233c',
+      palette: [
+        { color: '#2b2d42', size: 0.33 }, { color: '#8d99ae', size: 0.30 },
+        { color: '#ef233c', size: 0.31 }
+      ]
+    }
+  ];
+
+  /** Upgrade prices are anchored to ~5 s of the line's own base income. */
+  PRODUCTS.forEach(p => { p.tierBase = Math.max(12, p.rate * p.value * 5); });
+
+  const BY_ID = {};
+  PRODUCTS.forEach((p, i) => { p.index = i; BY_ID[p.id] = p; });
+  const getProduct = id => BY_ID[id] || null;
+
+  /* =================================================================== */
+  /*  The four upgrade axes                                              */
+  /* =================================================================== */
+  const STAR_VALUE = [1, 1.55, 2.4, 3.8, 6.0];      // index = stars - 1
+  const STAR_COST = [55, 320, 1900, 12000];         // cost to reach star i+2
+
+  const AXES = [
+    {
+      id: 'speed', name: 'Line Speed', short: 'SPD',
+      desc: 'Belt velocity. Straight throughput.',
+      kind: 'level', max: 500, step: 0.07, costMul: 1.0, growth: 1.150,
+      affects: 'throughput'
+    },
+    {
+      id: 'supply', name: 'Supply Rate', short: 'SUP',
+      desc: 'Raw stock feeding the head of the line.',
+      kind: 'level', max: 500, step: 0.06, costMul: 1.3, growth: 1.160,
+      affects: 'throughput'
+    },
+    {
+      id: 'robot', name: 'Robot Multiplier', short: 'BOT',
+      desc: 'Arm cycle rate — more transfers per minute.',
+      kind: 'level', max: 500, step: 0.09, costMul: 2.2, growth: 1.190,
+      affects: 'throughput'
+    },
+    {
+      id: 'quality', name: 'Parts Quality', short: 'QTY',
+      desc: 'Component grade. The only lever on unit value.',
+      kind: 'stars', max: 5, costMul: 1.0, affects: 'value'
+    }
+  ];
+
+  const AXIS_BY_ID = {};
+  AXES.forEach(a => { AXIS_BY_ID[a.id] = a; });
+  const getAxis = id => AXIS_BY_ID[id] || null;
+
+  /** Multiplier delivered by `level` on a given axis. */
+  function axisMultiplier(axisId, level) {
+    const a = AXIS_BY_ID[axisId];
+    if (!a) return 1;
+    if (a.kind === 'stars') {
+      return STAR_VALUE[Math.max(0, Math.min(STAR_VALUE.length - 1, level - 1))];
+    }
+    return 1 + a.step * Math.max(0, level - 1);
+  }
+
+  /**
+   * Cost to buy the NEXT point on an axis. Returns Infinity at max — the
+   * caller can compare against cash without special-casing the cap.
+   */
+  function axisCost(product, axisId, currentLevel) {
+    const a = AXIS_BY_ID[axisId];
+    if (!a || !product) return Infinity;
+    if (currentLevel >= a.max) return Infinity;
+    if (a.kind === 'stars') {
+      return Math.ceil(product.tierBase * STAR_COST[currentLevel - 1]);
+    }
+    return Math.ceil(product.tierBase * a.costMul *
+      Math.pow(a.growth, Math.max(0, currentLevel - 1)));
+  }
+
+  /**
+   * Total cost of buying `count` consecutive levels — powers the "buy x10 /
+   * buy max" controls Step 3 will hang off this.
+   */
+  function axisBulkCost(product, axisId, currentLevel, count) {
+    let total = 0, lvl = currentLevel;
+    for (let i = 0; i < count; i++) {
+      const c = axisCost(product, axisId, lvl);
+      if (!isFinite(c)) break;
+      total += c; lvl++;
+    }
+    return { cost: total, levels: lvl - currentLevel };
+  }
+
+  /** How many levels `budget` buys on an axis, and what that costs. */
+  function axisAffordable(product, axisId, currentLevel, budget, cap) {
+    let spent = 0, lvl = currentLevel, n = 0;
+    const limit = cap == null ? 1000 : cap;   // 0 is a legitimate cap
+    while (n < limit) {
+      const c = axisCost(product, axisId, lvl);
+      if (!isFinite(c) || spent + c > budget) break;
+      spent += c; lvl++; n++;
+    }
+    return { cost: spent, levels: n };
+  }
+
+  /* =================================================================== */
+  /*  Player level curve                                                 */
+  /* =================================================================== */
+  /**
+   * XP required to go from `level` to `level + 1`.
+   *
+   * XP income scales with throughput, which is exponential — so a purely
+   * polynomial curve gets outrun and the player pins the level cap in a
+   * few days, collapsing every unlock gate into one moment. The geometric
+   * term keeps levels meaningful for the whole run: ~level 3 in the first
+   * hour, the last unlock gate (36) inside a couple of days, and triple
+   * digits still worth chasing deep into the late game.
+   */
+  const LEVEL_CAP = 999;
+  function xpForNext(level) {
+    if (level >= LEVEL_CAP) return Infinity;
+    return Math.ceil(55 * Math.pow(level, 1.9) * Math.pow(1.12, level - 1));
+  }
+
+  /** Total XP banked at the start of `level`. */
+  function xpTotalTo(level) {
+    let t = 0;
+    for (let l = 1; l < level; l++) t += xpForNext(l);
+    return t;
+  }
+
+  /* =================================================================== */
+  /*  Objectives — an ordered chain; three are active at a time          */
+  /* =================================================================== */
+  /**
+   * Each objective exposes progress(state) → current value, and a target.
+   * Keeping them declarative means the tracker in economy.js never grows a
+   * switch statement, and Step 3 can render any of them generically.
+   */
+  const OBJECTIVES = [
+    {
+      id: 'ship-25', name: 'First Run', desc: 'Ship 25 SHIRT units',
+      target: 25, reward: { cash: 80, xp: 25 },
+      progress: s => s.lines.shirt.shipped
+    },
+    {
+      id: 'upgrade-any', name: 'Tune the Line', desc: 'Buy any upgrade',
+      target: 1, reward: { cash: 150, xp: 30 },
+      progress: s => s.stats.upgradesBought
+    },
+    {
+      id: 'speed-5', name: 'Wind It Up', desc: 'SHIRT line speed to level 5',
+      target: 5, reward: { cash: 400, xp: 60 },
+      progress: s => s.lines.shirt.speed
+    },
+    {
+      id: 'earn-2k', name: 'Turning a Profit', desc: 'Earn $2,000 total',
+      target: 2e3, reward: { cash: 500, xp: 90 }, money: true,
+      progress: s => s.stats.totalEarned
+    },
+    {
+      id: 'unlock-kicks', name: 'Diversify', desc: 'Unlock the Fly Kicks line',
+      target: 1, reward: { cash: 1.2e3, xp: 150 },
+      progress: s => s.lines.kicks.unlocked ? 1 : 0
+    },
+    {
+      id: 'quality-2', name: 'Better Parts', desc: 'Reach 2★ parts on any line',
+      target: 2, reward: { cash: 3e3, xp: 200 },
+      progress: s => s.maxQuality()
+    },
+    {
+      id: 'level-6', name: 'Floor Manager', desc: 'Reach player level 6',
+      target: 6, reward: { cash: 8e3, xp: 0 },
+      progress: s => s.level
+    },
+    {
+      id: 'unlock-rayblock', name: 'Eyewear Money', desc: 'Unlock the Ray Block line',
+      target: 1, reward: { cash: 1.5e4, xp: 600 },
+      progress: s => s.lines.rayblock.unlocked ? 1 : 0
+    },
+    {
+      id: 'ship-5k', name: 'Volume Play', desc: 'Ship 5,000 units across all lines',
+      target: 5e3, reward: { cash: 4e4, xp: 900 },
+      progress: s => s.stats.totalShipped
+    },
+    {
+      id: 'robot-15', name: 'Robot Army', desc: 'Any line to robot level 15',
+      target: 15, reward: { cash: 1.2e5, xp: 1.4e3 },
+      progress: s => s.maxAxis('robot')
+    },
+    {
+      id: 'unlock-smellcohol', name: 'Scent of Success', desc: 'Unlock the Smellcohol line',
+      target: 1, reward: { cash: 2.5e5, xp: 2.5e3 },
+      progress: s => s.lines.smellcohol.unlocked ? 1 : 0
+    },
+    {
+      id: 'rate-10k', name: 'Ten a Minute', desc: 'Reach $10,000 / min',
+      target: 1e4, reward: { cash: 6e5, xp: 4e3 }, money: true,
+      progress: s => s.incomePerMinute()
+    },
+    {
+      id: 'unlock-pumps', name: 'Heel Turn', desc: 'Unlock the Pumps line',
+      target: 1, reward: { cash: 3e6, xp: 8e3 },
+      progress: s => s.lines.pumps.unlocked ? 1 : 0
+    },
+    {
+      id: 'quality-5', name: 'Flawless', desc: 'Reach 5★ parts on any line',
+      target: 5, reward: { cash: 2e7, xp: 2e4 },
+      progress: s => s.maxQuality()
+    },
+    {
+      id: 'level-21', name: 'Plant Director', desc: 'Reach player level 21',
+      target: 21, reward: { cash: 8e7, xp: 0 },
+      progress: s => s.level
+    },
+    {
+      id: 'unlock-diveclock', name: 'Time Piece', desc: 'Unlock the Dive Clock line',
+      target: 1, reward: { cash: 1.5e8, xp: 6e4 },
+      progress: s => s.lines.diveclock.unlocked ? 1 : 0
+    },
+    {
+      id: 'unlock-strap', name: 'Where the Margin Is', desc: 'Unlock the Strap line',
+      target: 1, reward: { cash: 2e9, xp: 2e5 },
+      progress: s => s.lines.strap.unlocked ? 1 : 0
+    },
+    {
+      id: 'all-lines', name: 'Full Catalogue', desc: 'Unlock all 8 production lines',
+      target: 8, reward: { cash: 5e10, xp: 1e6 },
+      progress: s => s.unlockedCount()
+    }
+  ];
+
+  /* =================================================================== */
+  /*  Boosters — short, free, cooldown-gated surges                      */
+  /* =================================================================== */
+  /**
+   * `mult` keys fold into the income model at three different points:
+   *   throughput → units/min (so the belts visibly speed up too)
+   *   income     → $/unit
+   *   xp         → xp/unit
+   * `instant` pays a lump sum of the current rate instead of running a timer.
+   * Cooldown starts on activation, so a booster's real cadence is
+   * cooldown, not cooldown + duration.
+   */
+  const BOOSTERS = [
+    {
+      id: 'overdrive', name: 'Overdrive', icon: '⚡',
+      desc: '2× income for 60s', tone: '#ffc832',
+      mult: { income: 2 }, duration: 60, cooldown: 300
+    },
+    {
+      id: 'turbo', name: 'Belt Turbo', icon: '🏭',
+      desc: '1.5× throughput for 90s', tone: '#38d9d0',
+      mult: { throughput: 1.5 }, duration: 90, cooldown: 360
+    },
+    {
+      id: 'surge', name: 'XP Surge', icon: '⭐',
+      desc: '3× XP for 120s', tone: '#b892ff',
+      mult: { xp: 3 }, duration: 120, cooldown: 420
+    },
+    {
+      id: 'shipment', name: 'Rush Shipment', icon: '💰',
+      desc: 'Bank 30 min of income instantly', tone: '#7dffb0',
+      instant: { minutes: 30 }, cooldown: 600
+    }
+  ];
+
+  const BOOSTER_BY_ID = {};
+  BOOSTERS.forEach(b => { BOOSTER_BY_ID[b.id] = b; });
+
+  /* =================================================================== */
+  /*  Balance constants — one place to tune the feel                     */
+  /* =================================================================== */
+  const BALANCE = {
+    offlineEfficiency: 0.55,   // fraction of online rate earned while away
+    offlineCapSeconds: 24 * HOUR,
+    offlineMinSeconds: 60,     // shorter gaps aren't worth a report
+    autosaveSeconds: 5,
+    saveKey: 'isofactory.save.v1',
+    saveVersion: 1,
+    startingCash: 0,
+    globalMultiplier: 1        // reserved for Step-4 prestige
+  };
+
+  /* =================================================================== */
+  /*  Number formatting                                                  */
+  /* =================================================================== */
+  const SUFFIX = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+
+  const Format = {
+    /** 1234567 → "1.23M". Compact and stable in width. */
+    num(n, places) {
+      if (!isFinite(n)) return '∞';
+      const neg = n < 0; n = Math.abs(n);
+      if (n < 1000) {
+        const p = places == null ? (n < 10 && n % 1 !== 0 ? 1 : 0) : places;
+        return (neg ? '-' : '') + n.toFixed(p);
+      }
+      let t = 0;
+      while (n >= 1000 && t < SUFFIX.length - 1) { n /= 1000; t++; }
+      const p = places == null ? (n < 10 ? 2 : n < 100 ? 1 : 0) : places;
+      return (neg ? '-' : '') + n.toFixed(p) + SUFFIX[t];
+    },
+    money(n, places) { return '$' + Format.num(n, places); },
+    rate(n) { return '$' + Format.num(n) + '/min'; },
+    /** Seconds → "3h 04m", "12m 30s", "45s". */
+    time(sec) {
+      sec = Math.max(0, Math.floor(sec));
+      const d = Math.floor(sec / DAY);
+      const h = Math.floor((sec % DAY) / HOUR);
+      const m = Math.floor((sec % HOUR) / 60);
+      const s = sec % 60;
+      if (d) return d + 'd ' + String(h).padStart(2, '0') + 'h';
+      if (h) return h + 'h ' + String(m).padStart(2, '0') + 'm';
+      if (m) return m + 'm ' + String(s).padStart(2, '0') + 's';
+      return s + 's';
+    },
+    stars(n) { return '★'.repeat(n) + '☆'.repeat(Math.max(0, 5 - n)); },
+    pct(x) { return (x * 100).toFixed(x < 0.1 ? 1 : 0) + '%'; }
+  };
+
+  /* =================================================================== */
+  global.PRODUCTS = {
+    PRODUCTS, BY_ID, getProduct,
+    AXES, AXIS_BY_ID, getAxis, axisMultiplier, axisCost, axisBulkCost,
+    axisAffordable, STAR_VALUE, STAR_COST,
+    xpForNext, xpTotalTo, LEVEL_CAP, OBJECTIVES, BALANCE, Format,
+    BOOSTERS, BOOSTER_BY_ID
+  };
+})(window);
+
+/* ===== js/economy.js ================================================= */
+/* =====================================================================
+   economy.js — the mutable game state: cash, XP, per-line upgrades,
+   passive income, offline earnings, autosave, unlocks and objectives.
+   ---------------------------------------------------------------------
+   Depends only on products.js. Knows nothing about the canvas — the
+   renderer is driven from binding.js, which reads this. That split is
+   deliberate: the whole economy can be unit-tested headlessly, and a
+   dropped frame can never desync the books.
+
+     const state = new ECONOMY.GameState();
+     state.load();                       // + offline earnings report
+     engine.onTick = dt => state.tick(dt);
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const P = global.PRODUCTS;
+  const { PRODUCTS: LIST, getProduct, getAxis, axisMultiplier, axisCost,
+    axisAffordable, xpForNext, OBJECTIVES, BALANCE, Format,
+    BOOSTERS, BOOSTER_BY_ID } = P;
+
+  const now = () => Date.now();
+
+  /* =================================================================== */
+  /*  Storage — localStorage with a graceful in-memory fallback          */
+  /* =================================================================== */
+  const Storage = {
+    available: (() => {
+      try {
+        const k = '__isofactory_probe__';
+        global.localStorage.setItem(k, '1');
+        global.localStorage.removeItem(k);
+        return true;
+      } catch (e) { return false; }   // private mode, blocked cookies, SSR
+    })(),
+    _mem: {},
+
+    get(key) {
+      try {
+        return Storage.available ? global.localStorage.getItem(key) : Storage._mem[key];
+      } catch (e) { return Storage._mem[key]; }
+    },
+    set(key, val) {
+      try {
+        if (Storage.available) global.localStorage.setItem(key, val);
+        else Storage._mem[key] = val;
+        return true;
+      } catch (e) {
+        Storage._mem[key] = val;      // quota exceeded — keep the session alive
+        return false;
+      }
+    },
+    remove(key) {
+      try {
+        if (Storage.available) global.localStorage.removeItem(key);
+      } catch (e) { /* ignore */ }
+      delete Storage._mem[key];
+    }
+  };
+
+  /* =================================================================== */
+  /*  Tiny event emitter                                                 */
+  /* =================================================================== */
+  class Emitter {
+    constructor() { this._h = {}; }
+    on(evt, fn) { (this._h[evt] || (this._h[evt] = [])).push(fn); return () => this.off(evt, fn); }
+    off(evt, fn) {
+      const a = this._h[evt]; if (!a) return;
+      const i = a.indexOf(fn); if (i >= 0) a.splice(i, 1);
+    }
+    emit(evt, payload) {
+      const a = this._h[evt];
+      if (a) for (let i = 0; i < a.length; i++) {
+        try { a[i](payload, evt); }
+        catch (e) { console.error('[economy] listener for "' + evt + '" threw:', e); }
+      }
+      // 'change' is the catch-all Step-3 panels can subscribe to once
+      if (evt !== 'change' && evt !== 'tick') this.emit('change', { reason: evt, payload });
+    }
+  }
+
+  /* =================================================================== */
+  /*  A single production line                                           */
+  /* =================================================================== */
+  function newLine(product) {
+    return {
+      id: product.id,
+      unlocked: product.unlockCost === 0 && product.unlockLv <= 1,
+      speed: 1, supply: 1, robot: 1, quality: 1,   // the four axes
+      shipped: 0,        // whole units shipped
+      _partial: 0,       // sub-unit carry, so slow lines still tick over
+      earned: 0          // lifetime cash from this line
+    };
+  }
+
+  /* =================================================================== */
+  /*  GameState                                                          */
+  /* =================================================================== */
+  class GameState extends Emitter {
+    constructor(opts) {
+      super();
+      Object.assign(this, {
+        autosaveSeconds: BALANCE.autosaveSeconds,
+        saveKey: BALANCE.saveKey,
+        offlineEfficiency: BALANCE.offlineEfficiency
+      }, opts || {});
+
+      this.reset(true);
+    }
+
+    /* ------------------------------------------------------- lifecycle */
+    reset(silent) {
+      this.cash = BALANCE.startingCash;
+      this.level = 1;
+      this.xp = 0;                       // xp banked into the current level
+      this.globalMultiplier = BALANCE.globalMultiplier;
+      this.selectedLine = LIST[0].id;
+
+      this.lines = {};
+      LIST.forEach(p => { this.lines[p.id] = newLine(p); });
+
+      this.stats = {
+        totalEarned: 0, totalShipped: 0, upgradesBought: 0,
+        unlocksBought: 0, objectivesDone: 0,
+        startedAt: now(), playTime: 0, offlineEarned: 0
+      };
+
+      this.objectives = { done: {}, order: OBJECTIVES.map(o => o.id) };
+      this.boosters = {};                // id → {until, cdUntil} in ms
+      this.offlineReport = null;
+      this.lastSaved = now();
+
+      this._saveClock = 0;
+      this._objClock = 0;
+      this._dirty = false;
+
+      if (!silent) this.emit('reset');
+    }
+
+    /* ---------------------------------------------------------- lookup */
+    line(id) { return this.lines[id] || null; }
+    product(id) { return getProduct(id); }
+
+    unlockedLines() { return LIST.filter(p => this.lines[p.id].unlocked); }
+    unlockedCount() { return this.unlockedLines().length; }
+
+    /** Highest star rating across every line — used by objectives. */
+    maxQuality() { return this.maxAxis('quality'); }
+    maxAxis(axisId) {
+      let m = 0;
+      for (const id in this.lines) {
+        if (this.lines[id].unlocked) m = Math.max(m, this.lines[id][axisId]);
+      }
+      return m;
+    }
+
+    /* ================================================================= */
+    /*  Income model                                                     */
+    /* ================================================================= */
+
+    /**
+     * Product of every active booster touching `kind`. Expired entries
+     * simply stop counting — no timer, no cleanup pass, and offline
+     * settlement automatically runs unboosted because the stamps are stale
+     * by the time a save is reloaded.
+     */
+    boosterMultiplier(kind) {
+      const t = now();
+      let m = 1;
+      for (const id in this.boosters) {
+        const b = this.boosters[id], def = BOOSTER_BY_ID[id];
+        if (!def || !def.mult || !b || b.until <= t) continue;
+        if (def.mult[kind]) m *= def.mult[kind];
+      }
+      return m;
+    }
+
+    /** Combined throughput multiplier from the three volume axes. */
+    throughputMultiplier(id) {
+      const l = this.lines[id];
+      if (!l) return 0;
+      return axisMultiplier('speed', l.speed) *
+        axisMultiplier('supply', l.supply) *
+        axisMultiplier('robot', l.robot) *
+        this.boosterMultiplier('throughput');
+    }
+
+    /** Units per minute produced by a line (0 when locked). */
+    throughputPerMinute(id) {
+      const l = this.lines[id], p = getProduct(id);
+      if (!l || !p || !l.unlocked) return 0;
+      return p.rate * this.throughputMultiplier(id);
+    }
+
+    /** $ per unit — base value scaled by parts quality and any global. */
+    valuePerUnit(id) {
+      const l = this.lines[id], p = getProduct(id);
+      if (!l || !p) return 0;
+      return p.value * axisMultiplier('quality', l.quality) *
+        this.globalMultiplier * this.boosterMultiplier('income');
+    }
+
+    /** ← the passive income calculator, per line. */
+    lineIncomePerMinute(id) {
+      return this.throughputPerMinute(id) * this.valuePerUnit(id);
+    }
+
+    /** ← and across the whole factory. */
+    incomePerMinute() {
+      let sum = 0;
+      for (let i = 0; i < LIST.length; i++) sum += this.lineIncomePerMinute(LIST[i].id);
+      return sum;
+    }
+
+    incomePerSecond() { return this.incomePerMinute() / 60; }
+
+    xpPerMinute() {
+      let sum = 0;
+      for (let i = 0; i < LIST.length; i++) {
+        const p = LIST[i];
+        sum += this.throughputPerMinute(p.id) * p.xp;
+      }
+      return sum;
+    }
+
+    /** What one more point on an axis would add to $/min. Drives the UI. */
+    upgradePreview(id, axisId) {
+      const l = this.lines[id];
+      if (!l) return null;
+      const axis = getAxis(axisId);
+      const before = this.lineIncomePerMinute(id);
+      const prev = l[axisId];
+      if (prev >= axis.max) return { cost: Infinity, gain: 0, maxed: true, before, after: before };
+      l[axisId] = prev + 1;
+      const after = this.lineIncomePerMinute(id);
+      l[axisId] = prev;
+      const cost = axisCost(getProduct(id), axisId, prev);
+      return {
+        cost, gain: after - before, before, after, maxed: false,
+        payback: after > before ? cost / ((after - before) / 60) : Infinity  // seconds
+      };
+    }
+
+    /* ================================================================= */
+    /*  Simulation tick — call at a fixed 60 Hz from the engine          */
+    /* ================================================================= */
+    tick(dt) {
+      if (!(dt > 0)) return;
+      this.stats.playTime += dt;
+      this._accrue(dt, 1);
+
+      // --- objectives, four times a second ---------------------------
+      this._objClock += dt;
+      if (this._objClock >= 0.25) { this._objClock = 0; this.checkObjectives(); }
+
+      // --- autosave --------------------------------------------------
+      this._saveClock += dt;
+      if (this._saveClock >= this.autosaveSeconds) { this._saveClock = 0; this.save(); }
+
+      this.emit('tick', dt);
+    }
+
+    /**
+     * Shared by the live tick and the offline catch-up. `efficiency` is 1
+     * while playing and BALANCE.offlineEfficiency while away, so both paths
+     * run through exactly one income implementation.
+     */
+    _accrue(seconds, efficiency) {
+      const minutes = (seconds / 60) * efficiency;
+      let cash = 0, units = 0, xp = 0;
+
+      for (let i = 0; i < LIST.length; i++) {
+        const p = LIST[i], l = this.lines[p.id];
+        if (!l.unlocked) continue;
+        const made = this.throughputPerMinute(p.id) * minutes;
+        if (made <= 0) continue;
+        const gain = made * this.valuePerUnit(p.id);
+
+        l._partial += made;
+        const whole = Math.floor(l._partial);
+        if (whole > 0) { l._partial -= whole; l.shipped += whole; units += whole; }
+
+        l.earned += gain;
+        cash += gain;
+        xp += made * p.xp;
+      }
+      xp *= this.boosterMultiplier('xp');
+
+      this.cash += cash;
+      this.stats.totalEarned += cash;
+      this.stats.totalShipped += units;
+      this.addXp(xp);
+      return { cash, units, xp };
+    }
+
+    /* ================================================================= */
+    /*  Levelling                                                        */
+    /* ================================================================= */
+    addXp(amount) {
+      if (!(amount > 0)) return 0;
+      this.xp += amount;
+      let gained = 0;
+      let need = xpForNext(this.level);
+      while (this.xp >= need && isFinite(need)) {
+        this.xp -= need;
+        this.level++; gained++;
+        need = xpForNext(this.level);
+      }
+      // at the cap the bar sits full rather than banking unspendable XP
+      if (!isFinite(need)) this.xp = 0;
+      if (gained) {
+        this.emit('levelup', { level: this.level, gained, unlockable: this.newlyUnlockable() });
+      }
+      return gained;
+    }
+
+    xpToNext() { return xpForNext(this.level); }
+    xpProgress() {
+      const need = xpForNext(this.level);
+      return isFinite(need) ? Math.min(1, this.xp / need) : 1;
+    }
+    atLevelCap() { return !isFinite(xpForNext(this.level)); }
+
+    /** Lines whose level gate is met but that haven't been bought yet. */
+    newlyUnlockable() {
+      return LIST.filter(p => !this.lines[p.id].unlocked && this.level >= p.unlockLv)
+        .map(p => p.id);
+    }
+
+    /* ================================================================= */
+    /*  Unlocks                                                          */
+    /* ================================================================= */
+    unlockState(id) {
+      const p = getProduct(id), l = this.lines[id];
+      if (!p || !l) return null;
+      return {
+        unlocked: l.unlocked,
+        levelMet: this.level >= p.unlockLv,
+        affordable: this.cash >= p.unlockCost,
+        cost: p.unlockCost,
+        levelRequired: p.unlockLv,
+        canUnlock: !l.unlocked && this.level >= p.unlockLv && this.cash >= p.unlockCost
+      };
+    }
+
+    canUnlock(id) { const s = this.unlockState(id); return !!s && s.canUnlock; }
+
+    unlockProduct(id) {
+      const s = this.unlockState(id);
+      if (!s || !s.canUnlock) return false;
+      const p = getProduct(id);
+      this.cash -= p.unlockCost;
+      this.lines[id].unlocked = true;
+      this.stats.unlocksBought++;
+      this.emit('unlock', { id, product: p, spent: p.unlockCost });
+      this.checkObjectives();
+      return true;
+    }
+
+    /* ================================================================= */
+    /*  Upgrades — the four axes                                         */
+    /* ================================================================= */
+    upgradeCost(id, axisId, count) {
+      const l = this.lines[id], p = getProduct(id);
+      if (!l || !p) return Infinity;
+      if (count == null || count === 1) return axisCost(p, axisId, l[axisId]);
+      return P.axisBulkCost(p, axisId, l[axisId], count).cost;
+    }
+
+    canUpgrade(id, axisId, count) {
+      const c = this.upgradeCost(id, axisId, count || 1);
+      return isFinite(c) && this.cash >= c && this.lines[id] && this.lines[id].unlocked;
+    }
+
+    /**
+     * Buy `count` points on an axis — or pass 'max' to spend what's
+     * affordable. Returns {bought, spent} so callers can react without
+     * re-deriving anything.
+     */
+    buyUpgrade(id, axisId, count) {
+      const l = this.lines[id], p = getProduct(id), axis = getAxis(axisId);
+      if (!l || !p || !axis || !l.unlocked) return { bought: 0, spent: 0 };
+
+      let plan;
+      if (count === 'max') {
+        plan = axisAffordable(p, axisId, l[axisId], this.cash, axis.max - l[axisId]);
+      } else {
+        const n = Math.max(1, count || 1);
+        const bulk = P.axisBulkCost(p, axisId, l[axisId], n);
+        plan = (bulk.levels === n && bulk.cost <= this.cash)
+          ? { cost: bulk.cost, levels: n }
+          : { cost: 0, levels: 0 };
+      }
+      if (plan.levels <= 0) return { bought: 0, spent: 0 };
+
+      this.cash -= plan.cost;
+      l[axisId] += plan.levels;
+      this.stats.upgradesBought += plan.levels;
+      this.emit('upgrade', {
+        id, axis: axisId, levels: plan.levels, spent: plan.cost, level: l[axisId]
+      });
+      this.checkObjectives();
+      return { bought: plan.levels, spent: plan.cost };
+    }
+
+    /* ================================================================= */
+    /*  Boosters                                                         */
+    /* ================================================================= */
+    /** Everything the BOOSTERS modal needs to draw one row. */
+    boosterView(id) {
+      const def = BOOSTER_BY_ID[id];
+      if (!def) return null;
+      const b = this.boosters[id] || { until: 0, cdUntil: 0 };
+      const t = now();
+      const activeMs = Math.max(0, b.until - t);
+      const coolMs = Math.max(0, b.cdUntil - t);
+      return {
+        id, def,
+        active: activeMs > 0,
+        remaining: activeMs / 1000,
+        activeProgress: def.duration ? activeMs / (def.duration * 1000) : 0,
+        cooling: coolMs > 0,
+        cooldown: coolMs / 1000,
+        cooldownProgress: def.cooldown ? 1 - coolMs / (def.cooldown * 1000) : 1,
+        ready: coolMs <= 0
+      };
+    }
+
+    boosterViews() { return BOOSTERS.map(b => this.boosterView(b.id)); }
+
+    /**
+     * Fire a booster. Instant ones pay a lump sum of the CURRENT rate;
+     * timed ones stamp an expiry. Returns a result object rather than a
+     * bare bool so the UI can say why nothing happened.
+     */
+    activateBooster(id) {
+      const def = BOOSTER_BY_ID[id];
+      if (!def) return { ok: false, reason: 'unknown' };
+      const view = this.boosterView(id);
+      if (!view.ready) return { ok: false, reason: 'cooldown', wait: view.cooldown };
+
+      const t = now();
+      const entry = this.boosters[id] || (this.boosters[id] = { until: 0, cdUntil: 0 });
+      entry.cdUntil = t + def.cooldown * 1000;
+
+      let granted = 0;
+      if (def.instant) {
+        granted = this.incomePerMinute() * def.instant.minutes;
+        this.cash += granted;
+        this.stats.totalEarned += granted;
+      } else {
+        entry.until = t + def.duration * 1000;
+      }
+
+      this.emit('booster', { id, def, granted, until: entry.until });
+      this.checkObjectives();
+      return { ok: true, granted, until: entry.until };
+    }
+
+    /* ================================================================= */
+    /*  Objectives                                                       */
+    /* ================================================================= */
+    /** The three-deep active window, in chain order. */
+    activeObjectives(n) {
+      const out = [];
+      for (let i = 0; i < OBJECTIVES.length && out.length < (n || 3); i++) {
+        const o = OBJECTIVES[i];
+        if (this.objectives.done[o.id]) continue;
+        out.push(this.objectiveView(o));
+      }
+      return out;
+    }
+
+    objectiveView(o) {
+      let cur = 0;
+      try { cur = o.progress(this) || 0; } catch (e) { cur = 0; }
+      return {
+        id: o.id, name: o.name, desc: o.desc, reward: o.reward,
+        current: Math.min(cur, o.target), target: o.target,
+        progress: Math.min(1, cur / o.target),
+        label: (o.money ? Format.money(Math.min(cur, o.target)) : Format.num(Math.min(cur, o.target))) +
+          ' / ' + (o.money ? Format.money(o.target) : Format.num(o.target)),
+        done: !!this.objectives.done[o.id]
+      };
+    }
+
+    /** Completes any satisfied objective in the active window and pays out. */
+    checkObjectives() {
+      const active = [];
+      for (let i = 0; i < OBJECTIVES.length && active.length < 3; i++) {
+        if (!this.objectives.done[OBJECTIVES[i].id]) active.push(OBJECTIVES[i]);
+      }
+      for (const o of active) {
+        let cur = 0;
+        try { cur = o.progress(this) || 0; } catch (e) { continue; }
+        if (cur < o.target) continue;
+
+        this.objectives.done[o.id] = now();
+        this.stats.objectivesDone++;
+        if (o.reward) {
+          if (o.reward.cash) {
+            this.cash += o.reward.cash;
+            this.stats.totalEarned += o.reward.cash;
+          }
+          if (o.reward.xp) this.addXp(o.reward.xp);
+        }
+        this.emit('objective', { id: o.id, name: o.name, reward: o.reward });
+      }
+    }
+
+    /* ================================================================= */
+    /*  Save / load                                                      */
+    /* ================================================================= */
+    serialize() {
+      const lines = {};
+      for (const id in this.lines) {
+        const l = this.lines[id];
+        lines[id] = {
+          u: l.unlocked ? 1 : 0,
+          s: l.speed, p: l.supply, r: l.robot, q: l.quality,
+          n: l.shipped, f: +l._partial.toFixed(4), e: l.earned
+        };
+      }
+      return {
+        v: BALANCE.saveVersion,
+        t: now(),
+        cash: this.cash, level: this.level, xp: this.xp,
+        sel: this.selectedLine,
+        gm: this.globalMultiplier,
+        lines,
+        obj: this.objectives.done,
+        boost: this.boosters,
+        stats: this.stats
+      };
+    }
+
+    save() {
+      this.lastSaved = now();
+      let ok = false;
+      try {
+        const blob = JSON.stringify(this.serialize());
+        ok = Storage.set(this.saveKey, blob);
+      } catch (e) {
+        console.error('[economy] save failed:', e);
+      }
+      this.emit('save', { ok, at: this.lastSaved });
+      return ok;
+    }
+
+    /**
+     * Load, migrate, and settle offline earnings.
+     * @returns {object|null} the offline report, or null on a fresh start.
+     */
+    load() {
+      const raw = Storage.get(this.saveKey);
+      if (!raw) { this.emit('load', { fresh: true }); return null; }
+
+      let data;
+      try { data = JSON.parse(raw); }
+      catch (e) {
+        console.warn('[economy] corrupt save discarded');
+        Storage.remove(this.saveKey);
+        this.emit('load', { fresh: true, corrupt: true });
+        return null;
+      }
+      if (!data || typeof data !== 'object') { this.emit('load', { fresh: true }); return null; }
+
+      this.applySave(this.migrate(data));
+      const report = this.settleOffline(data.t);
+      this.emit('load', { fresh: false, offline: report });
+      return report;
+    }
+
+    /** Forward-migrate older schemas. v1 is the baseline. */
+    migrate(data) {
+      if (!data.v || data.v < 1) data.v = 1;
+      return data;
+    }
+
+    applySave(d) {
+      const num = (v, fallback) => (typeof v === 'number' && isFinite(v) ? v : fallback);
+      const int = (v, fallback, lo, hi) => {
+        const n = Math.floor(num(v, fallback));
+        return Math.max(lo, Math.min(hi, n));
+      };
+
+      this.cash = Math.max(0, num(d.cash, 0));
+      this.level = int(d.level, 1, 1, 999);
+      this.xp = Math.max(0, num(d.xp, 0));
+      this.globalMultiplier = num(d.gm, 1);
+      this.selectedLine = getProduct(d.sel) ? d.sel : LIST[0].id;
+
+      LIST.forEach(p => {
+        const l = this.lines[p.id];
+        const s = (d.lines && d.lines[p.id]) || null;
+        if (!s) return;
+        l.unlocked = !!s.u;
+        l.speed = int(s.s, 1, 1, 500);
+        l.supply = int(s.p, 1, 1, 500);
+        l.robot = int(s.r, 1, 1, 500);
+        l.quality = int(s.q, 1, 1, 5);
+        l.shipped = Math.max(0, Math.floor(num(s.n, 0)));
+        l._partial = Math.max(0, num(s.f, 0));
+        l.earned = Math.max(0, num(s.e, 0));
+      });
+      // the starter line is never locked, whatever the save claims
+      this.lines[LIST[0].id].unlocked = true;
+
+      if (d.obj && typeof d.obj === 'object') {
+        const done = {};
+        for (const o of OBJECTIVES) if (d.obj[o.id]) done[o.id] = d.obj[o.id];
+        this.objectives.done = done;
+      }
+      if (d.boost && typeof d.boost === 'object') {
+        const b = {};
+        for (const def of BOOSTERS) {
+          const s = d.boost[def.id];
+          if (!s) continue;
+          b[def.id] = { until: num(s.until, 0), cdUntil: num(s.cdUntil, 0) };
+        }
+        this.boosters = b;
+      }
+      if (d.stats && typeof d.stats === 'object') {
+        for (const k in this.stats) {
+          this.stats[k] = num(d.stats[k], this.stats[k]);
+        }
+      }
+    }
+
+    /* ================================================================= */
+    /*  Offline earnings — capped at 24 h at reduced efficiency          */
+    /* ================================================================= */
+    settleOffline(savedAt) {
+      const stamp = (typeof savedAt === 'number' && isFinite(savedAt)) ? savedAt : 0;
+      const away = (now() - stamp) / 1000;
+
+      // negative = clock moved backwards; ignore rather than pay out
+      if (!(away > BALANCE.offlineMinSeconds)) { this.offlineReport = null; return null; }
+
+      const capped = Math.min(away, BALANCE.offlineCapSeconds);
+      const rateBefore = this.incomePerMinute();
+      const got = this._accrue(capped, this.offlineEfficiency);
+
+      this.stats.offlineEarned += got.cash;
+      const report = {
+        away, awaySeconds: capped,
+        capped: away > BALANCE.offlineCapSeconds,
+        capHours: BALANCE.offlineCapSeconds / 3600,
+        efficiency: this.offlineEfficiency,
+        ratePerMinute: rateBefore,
+        earned: got.cash, units: got.units, xp: got.xp,
+        text: Format.money(got.cash) + ' while away for ' + Format.time(away)
+      };
+      this.offlineReport = report;
+      this.checkObjectives();
+      this.emit('offline', report);
+      return report;
+    }
+
+    /** Wipe the save and start over. */
+    hardReset() {
+      Storage.remove(this.saveKey);
+      this.reset(false);
+      this.save();
+    }
+
+    /* ------------------------------------------------- debug / support */
+    snapshot() {
+      return {
+        cash: Format.money(this.cash),
+        rate: Format.rate(this.incomePerMinute()),
+        level: this.level,
+        xp: Math.floor(this.xp) + '/' + this.xpToNext(),
+        lines: this.unlockedLines().map(p => p.id + ' ' +
+          Format.rate(this.lineIncomePerMinute(p.id))),
+        objectives: this.activeObjectives().map(o => o.name + ' ' + o.label)
+      };
+    }
+
+    /** Persist on the way out — tab close, backgrounding, mobile swipe-away. */
+    installLifecycleHooks() {
+      const flush = () => { this._saveClock = 0; this.save(); };
+      global.addEventListener('beforeunload', flush);
+      global.addEventListener('pagehide', flush);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) flush();
+        else if (this.settleOnReturn !== false) {
+          // a backgrounded tab throttles rAF; settle the gap as offline time
+          const r = this.settleOffline(this.lastSaved);
+          if (r) this.emit('resume', r);
+        }
+      });
+      return this;
+    }
+  }
+
+  /* =================================================================== */
+  global.ECONOMY = { GameState, Storage, Emitter, Format };
+})(window);
+
+/* ===== js/binding.js ================================================= */
+/* =====================================================================
+   binding.js — the seam between the economy and the renderer.
+   ---------------------------------------------------------------------
+   The state is authoritative and continuous: money accrues from a rate,
+   never from a crate touching a truck. The factory floor is a VIEW of
+   that rate. Keeping the causality one-way (state → visuals, never the
+   reverse) is what stops a dropped frame, a background tab, or an offline
+   catch-up from desyncing the books.
+
+   What the floor shows for the selected line:
+     throughput   → belt speed, payload density, arm cycle, truck cadence
+     parts quality→ share of premium-coloured payload + arm payload colour
+     the product  → the entire payload palette
+
+   Because upgrade multipliers are unbounded but belt speed is not, every
+   mapping runs through a log compressor: each 10× of throughput buys one
+   more "step" of visible motion, so level 5 and level 500 both read
+   correctly without the belt turning into a blur.
+
+     const { state, binding } = BINDING.bootGame(GAME);
+     // afterwards: window.STATE (economy) and window.VIEW (this binding)
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const { M } = global.ISO;
+  const P = global.PRODUCTS;
+  const Format = P.Format;
+
+  /* Visible motion limits — the floor never exceeds these, whatever the
+     economy says. */
+  const VIS = {
+    beltMin: 0.75, beltMax: 4.2,
+    armMin: 0.85, armMax: 3.9,       // seconds per pick-and-place cycle
+    spacingMin: 0.5, spacingMax: 1.7,
+    truckWaitMin: 1.8, truckWaitMax: 5.6,
+    lerp: 2.5                        // how fast visuals chase a new target
+  };
+
+  /** 1 at rest, +1 per decade of throughput. Keeps late game legible. */
+  function compress(mult) {
+    return 1 + Math.log10(Math.max(1, mult));
+  }
+
+  /* =================================================================== */
+  class FactoryBinding {
+    constructor(engine, state) {
+      this.engine = engine;
+      this.state = state;
+
+      this.belts = engine.byTag('conveyor');
+      this.arms = engine.byTag('arm');
+      this.trucks = engine.byTag('truck');
+      this.docks = engine.byTag('dock');
+
+      // live values, eased toward the targets computed in sync()
+      this.beltSpeed = 1.1;
+      this.armCycle = 3.4;
+      this.target = { beltSpeed: 1.1, armCycle: 3.4, spacing: 1.4, truckWait: 4.6 };
+
+      this.lineId = state.selectedLine;
+
+      // re-derive whenever anything economic moves
+      this._off = state.on('change', () => this.sync());
+      state.on('unlock', e => { if (e && e.id) this.setLine(e.id); });
+
+      this.setLine(this.lineId, true);
+    }
+
+    dispose() { if (this._off) this._off(); }
+
+    /* ---------------------------------------------------------- palette */
+    /**
+     * Payload pool for a line: the product's own colours, with a share of
+     * premium (accent-tinted, slightly larger) pieces that grows with the
+     * parts-quality stars — so a 5★ line visibly ships better goods.
+     */
+    paletteFor(product, stars) {
+      const pool = product.palette.map(k => ({ color: k.color, size: k.size }));
+      const premium = Math.max(0, stars - 1);          // 0 … 4
+      for (let i = 0; i < premium; i++) {
+        pool.push({ color: product.accent, size: 0.34 + i * 0.012 });
+      }
+      return pool;
+    }
+
+    /* ------------------------------------------------------------ line */
+    /** Point the factory floor at a different production line. */
+    setLine(id, force) {
+      const st = this.state;
+      if (!st.line(id) || !st.line(id).unlocked) return false;
+      if (!force && id === this.lineId) return false;
+
+      this.lineId = id;
+      st.selectedLine = id;
+
+      const product = st.product(id);
+      const kinds = this.paletteFor(product, st.line(id).quality);
+      this.belts.forEach(b => b.setKinds(kinds));
+      this.arms.forEach((a, i) => {
+        a.payloadColor = product.palette[i % product.palette.length].color;
+      });
+
+      this.sync();
+      if (force !== true) st.emit('select', { id, product });
+      return true;
+    }
+
+    /* ------------------------------------------------------------ sync */
+    /** Recompute visual targets from the current economy state. */
+    sync() {
+      const st = this.state, id = this.lineId;
+      const line = st.line(id);
+      if (!line) return;
+
+      // quality changed → refresh the premium share of the payload
+      const stars = line.quality;
+      if (stars !== this._stars) {
+        this._stars = stars;
+        const kinds = this.paletteFor(st.product(id), stars);
+        this.belts.forEach(b => b.setKinds(kinds));
+      }
+
+      const power = compress(st.throughputMultiplier(id));   // 1 → ~4
+      const t = this.target;
+      t.beltSpeed = M.clamp(0.78 * power, VIS.beltMin, VIS.beltMax);
+      t.armCycle = M.clamp(3.9 / (0.55 + 0.45 * power), VIS.armMin, VIS.armMax);
+      t.spacing = M.clamp(1.9 - 0.34 * power, VIS.spacingMin, VIS.spacingMax);
+      t.truckWait = M.clamp(6.2 - 1.1 * power, VIS.truckWaitMin, VIS.truckWaitMax);
+    }
+
+    /* ---------------------------------------------------------- update */
+    update(dt) {
+      const t = this.target;
+
+      // ease the continuous values so an upgrade spins the floor up
+      this.beltSpeed = M.damp(this.beltSpeed, t.beltSpeed, VIS.lerp, dt);
+      this.armCycle = M.damp(this.armCycle, t.armCycle, VIS.lerp, dt);
+
+      for (let i = 0; i < this.belts.length; i++) {
+        const b = this.belts[i];
+        // the feeder line runs a touch hotter than the two main runs
+        b.speed = this.beltSpeed * (b.dir === '+y' ? 1.3 : 1);
+        b.setSpacing(t.spacing);
+      }
+      for (let i = 0; i < this.arms.length; i++) {
+        // stagger the arms so they never beat in lockstep
+        this.arms[i].cycle = this.armCycle * (1 + i * 0.06);
+      }
+      for (let i = 0; i < this.trucks.length; i++) this.trucks[i].wait = t.truckWait;
+    }
+  }
+
+  /* =================================================================== */
+  /*  Boot — wire state, binding and engine together                     */
+  /* =================================================================== */
+  function bootGame(engine) {
+    if (!engine) { console.error('[isofactory] no engine to bind to'); return null; }
+    const state = new global.ECONOMY.GameState();
+    const report = state.load();
+    state.installLifecycleHooks();
+
+    const binding = new FactoryBinding(engine, state);
+
+    // one fixed-step hook drives the books, then the floor that shows them
+    engine.onTick = dt => { state.tick(dt); binding.update(dt); };
+
+    // «STEP-3 HOOK» this is where the welcome-back modal will read from
+    if (report) {
+      console.log('[isofactory] offline: ' + report.text +
+        ' (' + Format.pct(report.efficiency) + ' rate' +
+        (report.capped ? ', capped at ' + report.capHours + 'h' : '') + ')');
+    }
+
+    global.STATE = state;
+    global.VIEW = binding;
+    return { state, binding, report };
+  }
+
+  global.BINDING = { FactoryBinding, bootGame, compress, VIS };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => bootGame(global.GAME));
+  } else {
+    bootGame(global.GAME);
+  }
+})(window);
+
+/* ===== js/audio.js =================================================== */
+/* =====================================================================
+   audio.js — procedural sound. No samples, no files: every effect is
+   synthesised from oscillators and noise buffers at call time.
+   ---------------------------------------------------------------------
+   Three things make this survive contact with a real game:
+
+   1. LAZY CONTEXT. Browsers refuse to start an AudioContext without a
+      user gesture. Construction is deferred to the first real interaction
+      and `resume()` is retried on every play, so nothing is lost if the
+      first gesture was consumed elsewhere.
+
+   2. THROTTLING. Belt deliveries and arm cycles fire far faster than the
+      ear wants. Every effect declares a minimum gap and silently drops
+      calls inside it, so a 10× speed upgrade doesn't turn into a buzzsaw.
+
+   3. HEADROOM. Everything runs through one gain into a compressor, so a
+      level-up landing on top of four assembly clicks ducks instead of
+      clipping. A generated impulse response adds a short room so the
+      blips don't sound like they were recorded in a vacuum.
+
+     const synth = new AUDIO.Synth();
+     synth.unlockOnGesture();
+     synth.play('levelup');
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const AC = global.AudioContext || global.webkitAudioContext;
+
+  /** Minimum seconds between repeats, per effect. */
+  const THROTTLE = {
+    assembly: 0.085, money: 0.10, click: 0.03, upgrade: 0.05,
+    truck: 0.9, levelup: 0.35, unlock: 0.3, objective: 0.25, error: 0.15
+  };
+
+  const PREF_KEY = 'isofactory.audio.v1';
+
+  class Synth {
+    constructor(opts) {
+      this.ctx = null;
+      this.master = null;
+      this.wet = null;
+      this.volume = (opts && opts.volume) || 0.55;
+      this.muted = false;
+      this._last = {};
+      this._chain = 0;          // consecutive money blips, for the pitch run
+      this._chainAt = 0;
+      this._started = false;
+
+      // restore the player's mute choice before anything can make noise
+      try {
+        const p = JSON.parse(global.localStorage.getItem(PREF_KEY) || '{}');
+        if (typeof p.muted === 'boolean') this.muted = p.muted;
+        if (typeof p.volume === 'number') this.volume = p.volume;
+      } catch (e) { /* storage blocked — defaults are fine */ }
+    }
+
+    /* ------------------------------------------------------------ setup */
+    /** Build the context on the first gesture of any kind. */
+    unlockOnGesture(target) {
+      const el = target || global;
+      const go = () => { this.ensure(); };
+      ['pointerdown', 'keydown', 'touchstart'].forEach(ev =>
+        el.addEventListener(ev, go, { once: false, passive: true }));
+      return this;
+    }
+
+    ensure() {
+      if (!AC) return null;
+      if (!this.ctx) {
+        try { this.ctx = new AC(); } catch (e) { return null; }
+
+        this.master = this.ctx.createGain();
+        this.master.gain.value = this.muted ? 0 : this.volume;
+
+        // one compressor for the whole game keeps overlapping cues sane
+        const comp = this.ctx.createDynamicsCompressor();
+        comp.threshold.value = -18;
+        comp.knee.value = 22;
+        comp.ratio.value = 8;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.18;
+
+        this.master.connect(comp);
+        comp.connect(this.ctx.destination);
+
+        // small generated room, mixed in behind everything
+        const rev = this.ctx.createConvolver();
+        rev.buffer = this._impulse(0.55, 2.6);
+        this.wet = this.ctx.createGain();
+        this.wet.gain.value = 0.16;
+        this.wet.connect(rev);
+        rev.connect(this.master);
+
+        this._started = true;
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+      return this.ctx;
+    }
+
+    /** Exponentially decaying noise — a cheap, decent small-room IR. */
+    _impulse(seconds, decay) {
+      const rate = this.ctx.sampleRate;
+      const len = Math.max(1, Math.floor(rate * seconds));
+      const buf = this.ctx.createBuffer(2, len, rate);
+      for (let c = 0; c < 2; c++) {
+        const d = buf.getChannelData(c);
+        for (let i = 0; i < len; i++) {
+          d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+        }
+      }
+      return buf;
+    }
+
+    _noiseBuffer(seconds) {
+      const rate = this.ctx.sampleRate;
+      const len = Math.max(1, Math.floor(rate * seconds));
+      const buf = this.ctx.createBuffer(1, len, rate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      return buf;
+    }
+
+    /* ----------------------------------------------------------- mixing */
+    setMuted(m) {
+      this.muted = !!m;
+      if (this.master) {
+        const t = this.ctx.currentTime;
+        this.master.gain.cancelScheduledValues(t);
+        this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume, t, 0.02);
+      }
+      this._savePrefs();
+      return this.muted;
+    }
+
+    toggleMute() { return this.setMuted(!this.muted); }
+
+    setVolume(v) {
+      this.volume = Math.max(0, Math.min(1, v));
+      if (this.master && !this.muted) {
+        this.master.gain.setTargetAtTime(this.volume, this.ctx.currentTime, 0.02);
+      }
+      this._savePrefs();
+    }
+
+    _savePrefs() {
+      try {
+        global.localStorage.setItem(PREF_KEY,
+          JSON.stringify({ muted: this.muted, volume: this.volume }));
+      } catch (e) { /* ignore */ }
+    }
+
+    /* --------------------------------------------------------- plumbing */
+    /** Gate: false when muted, contextless, or inside the throttle window. */
+    _gate(name) {
+      if (this.muted) return false;
+      const ctx = this.ensure();
+      if (!ctx || ctx.state !== 'running') return false;
+      const gap = THROTTLE[name] || 0.05;
+      const t = ctx.currentTime;
+      if (this._last[name] != null && t - this._last[name] < gap) return false;
+      this._last[name] = t;
+      return true;
+    }
+
+    /**
+     * One shaped voice: oscillator → gain (ADSR-ish) → destination, with a
+     * send to the room. Everything below is composed from this.
+     */
+    _voice(o) {
+      const ctx = this.ctx, t0 = ctx.currentTime + (o.delay || 0);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = o.type || 'sine';
+      osc.frequency.setValueAtTime(o.freq, t0);
+      if (o.freqTo) {
+        if (o.slide === 'linear') osc.frequency.linearRampToValueAtTime(o.freqTo, t0 + o.dur);
+        else osc.frequency.exponentialRampToValueAtTime(Math.max(1, o.freqTo), t0 + o.dur);
+      }
+      if (o.detune) osc.detune.setValueAtTime(o.detune, t0);
+
+      const peak = (o.gain == null ? 0.2 : o.gain);
+      const atk = o.attack == null ? 0.005 : o.attack;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), t0 + atk);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+
+      let node = osc;
+      if (o.filter) {
+        const f = ctx.createBiquadFilter();
+        f.type = o.filter;
+        f.frequency.setValueAtTime(o.cutoff || 900, t0);
+        if (o.cutoffTo) f.frequency.exponentialRampToValueAtTime(Math.max(20, o.cutoffTo), t0 + o.dur);
+        f.Q.value = o.q == null ? 1 : o.q;
+        node.connect(f); node = f;
+      }
+      node.connect(gain);
+      gain.connect(this.master);
+      if (o.room !== false) gain.connect(this.wet);
+
+      osc.start(t0);
+      osc.stop(t0 + o.dur + 0.05);
+      return osc;
+    }
+
+    /** Filtered noise burst — impacts, air, engine texture. */
+    _noise(o) {
+      const ctx = this.ctx, t0 = ctx.currentTime + (o.delay || 0);
+      const src = ctx.createBufferSource();
+      src.buffer = this._noiseBuffer(Math.max(0.05, o.dur));
+
+      const f = ctx.createBiquadFilter();
+      f.type = o.filter || 'bandpass';
+      f.frequency.setValueAtTime(o.cutoff || 1200, t0);
+      if (o.cutoffTo) f.frequency.exponentialRampToValueAtTime(Math.max(20, o.cutoffTo), t0 + o.dur);
+      f.Q.value = o.q == null ? 1.2 : o.q;
+
+      const gain = ctx.createGain();
+      const peak = o.gain == null ? 0.12 : o.gain;
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, peak), t0 + (o.attack || 0.004));
+      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + o.dur);
+
+      src.connect(f); f.connect(gain); gain.connect(this.master);
+      if (o.room !== false) gain.connect(this.wet);
+      src.start(t0);
+      src.stop(t0 + o.dur + 0.05);
+      return src;
+    }
+
+    /* ============================================================ cues */
+
+    /** A part landing on the belt: soft mechanical tick + servo blip. */
+    assembly() {
+      if (!this._gate('assembly')) return false;
+      this._noise({ dur: 0.055, cutoff: 2600, cutoffTo: 900, q: 1.4, gain: 0.055 });
+      this._voice({
+        type: 'square', freq: 320, freqTo: 190, dur: 0.07,
+        gain: 0.035, filter: 'lowpass', cutoff: 1800
+      });
+      return true;
+    }
+
+    /**
+     * Money. Consecutive blips inside a second walk up a pentatonic run,
+     * so a fast line reads as a satisfying cascade rather than one pitch
+     * hammered over and over.
+     */
+    money() {
+      if (!this._gate('money')) return false;
+      const t = this.ctx.currentTime;
+      if (t - this._chainAt > 0.9) this._chain = 0;
+      this._chainAt = t;
+      const steps = [0, 2, 4, 7, 9, 12, 14, 16];
+      const semi = steps[Math.min(this._chain, steps.length - 1)];
+      this._chain++;
+      const f = 784 * Math.pow(2, semi / 12);
+      this._voice({ type: 'triangle', freq: f, dur: 0.11, gain: 0.10, attack: 0.003 });
+      this._voice({ type: 'sine', freq: f * 2, dur: 0.07, gain: 0.045, delay: 0.012 });
+      return true;
+    }
+
+    /** Truck pulling away: diesel note dropping under a tyre-noise sweep. */
+    truck() {
+      if (!this._gate('truck')) return false;
+      this._voice({
+        type: 'sawtooth', freq: 78, freqTo: 41, dur: 1.35, gain: 0.16,
+        filter: 'lowpass', cutoff: 420, cutoffTo: 150, q: 3, attack: 0.06
+      });
+      this._voice({
+        type: 'square', freq: 39, freqTo: 21, dur: 1.2, gain: 0.07,
+        filter: 'lowpass', cutoff: 260
+      });
+      this._noise({
+        dur: 1.1, filter: 'bandpass', cutoff: 900, cutoffTo: 260,
+        q: 0.8, gain: 0.05, attack: 0.12
+      });
+      // air brake on release
+      this._noise({ dur: 0.3, filter: 'highpass', cutoff: 2400, gain: 0.05, delay: 0.9 });
+      return true;
+    }
+
+    /** Level up: rising major arpeggio with a shimmering octave on top. */
+    levelup() {
+      if (!this._gate('levelup')) return false;
+      const notes = [523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((f, i) => {
+        this._voice({
+          type: 'triangle', freq: f, dur: 0.42, gain: 0.13,
+          delay: i * 0.085, attack: 0.008
+        });
+        this._voice({
+          type: 'sawtooth', freq: f * 2, dur: 0.3, gain: 0.035,
+          delay: i * 0.085, detune: 7, filter: 'lowpass', cutoff: 4200
+        });
+      });
+      this._voice({
+        type: 'sine', freq: 1046.5, freqTo: 1568, dur: 0.9,
+        gain: 0.07, delay: 0.34, attack: 0.05
+      });
+      return true;
+    }
+
+    /** New production line: short three-note fanfare, fifths stacked. */
+    unlock() {
+      if (!this._gate('unlock')) return false;
+      [[392, 0], [587.33, 0.1], [783.99, 0.2]].forEach(([f, d]) => {
+        this._voice({ type: 'sawtooth', freq: f, dur: 0.5, gain: 0.09, delay: d, filter: 'lowpass', cutoff: 3000, q: 2 });
+        this._voice({ type: 'triangle', freq: f * 1.5, dur: 0.4, gain: 0.05, delay: d });
+      });
+      this._noise({ dur: 0.5, filter: 'highpass', cutoff: 5200, gain: 0.03, delay: 0.2 });
+      return true;
+    }
+
+    /** Upgrade bought: two-step ratchet up. */
+    upgrade() {
+      if (!this._gate('upgrade')) return false;
+      this._voice({ type: 'square', freq: 660, dur: 0.07, gain: 0.06, filter: 'lowpass', cutoff: 2600 });
+      this._voice({ type: 'square', freq: 990, dur: 0.1, gain: 0.06, delay: 0.06, filter: 'lowpass', cutoff: 3200 });
+      return true;
+    }
+
+    /** Objective cleared: bell pair with a long tail. */
+    objective() {
+      if (!this._gate('objective')) return false;
+      this._voice({ type: 'sine', freq: 1568, dur: 0.8, gain: 0.10, attack: 0.004 });
+      this._voice({ type: 'sine', freq: 2093, dur: 1.1, gain: 0.06, delay: 0.06 });
+      this._voice({ type: 'sine', freq: 3136, dur: 0.5, gain: 0.025, delay: 0.1 });
+      return true;
+    }
+
+    /** UI tap. */
+    click() {
+      if (!this._gate('click')) return false;
+      this._voice({
+        type: 'triangle', freq: 1250, freqTo: 900, dur: 0.035,
+        gain: 0.05, room: false
+      });
+      return true;
+    }
+
+    /** Rejected action — can't afford, on cooldown, still locked. */
+    error() {
+      if (!this._gate('error')) return false;
+      this._voice({
+        type: 'square', freq: 168, freqTo: 110, dur: 0.16, gain: 0.07,
+        filter: 'lowpass', cutoff: 900, room: false
+      });
+      return true;
+    }
+
+    /** Generic dispatch, so callers can be data-driven. */
+    play(name) {
+      const fn = this[name];
+      return typeof fn === 'function' ? fn.call(this) : false;
+    }
+  }
+
+  global.AUDIO = { Synth, THROTTLE };
+})(window);
+
+/* ===== js/ui.js ====================================================== */
+/* =====================================================================
+   ui.js — the game shell: header, tabs, panels, modals, toasts, canvas
+   floaters, and every event listener that joins them to the state and
+   the renderer.
+   ---------------------------------------------------------------------
+   Two rules keep a 60 fps canvas and a DOM UI coexisting:
+
+   1. NOTHING REBUILDS PER FRAME. Rows are constructed once and cached by
+      id; the refresh loop only writes textContent and bar widths. DOM is
+      rebuilt exclusively on structural change (a line unlocks, the viewed
+      line switches).
+   2. THE UI POLLS, THE STATE PUSHES. Values that change continuously
+      (cash, rate, XP, cooldowns) are read on a 10 Hz timer; discrete
+      events (upgrade, unlock, levelup, objective) arrive as state events
+      and drive sound, toasts and re-renders.
+
+   Boots last: it wraps engine.onTick so the economy still ticks first,
+   and claims engine.onRender for the screen-space floater pass that
+   Step 1 reserved.
+   ===================================================================== */
+(function (global) {
+  'use strict';
+
+  const P = global.PRODUCTS;
+  const Format = P.Format;
+
+  const el = id => document.getElementById(id);
+  const make = (tag, cls, html) => {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (html != null) n.innerHTML = html;
+    return n;
+  };
+
+  /* =================================================================== */
+  class GameUI {
+    constructor(engine, state, view, synth) {
+      this.engine = engine;
+      this.state = state;
+      this.view = view;
+      this.synth = synth;
+
+      this.tab = null;            // 'products' | 'factory' | null (closed)
+      this.buyAmount = 1;         // 1 | 10 | 'max'
+      this.floaters = [];
+      this._clock = 0;
+      this._rows = { product: new Map(), axis: new Map(), booster: new Map() };
+
+      this.dom = {
+        cash: el('ui-cash'), rate: el('ui-rate'),
+        level: el('ui-level'), xp: el('ui-xp'),
+        objName: el('ui-obj-name'), objFill: el('ui-obj-fill'),
+        objCount: el('ui-obj-count'), objReward: el('ui-obj-reward'),
+        objective: el('ui-objective'),
+        boostStrip: el('ui-boost-strip'),
+        sheet: el('sheet'), tabs: el('tabs'),
+        panels: { products: el('panel-products'), factory: el('panel-factory') },
+        productRows: el('ui-product-rows'), axisRows: el('ui-axis-rows'),
+        boosterRows: el('ui-booster-rows'),
+        factoryTitle: el('ui-factory-title'), lineSummary: el('ui-line-summary'),
+        linesNote: el('ui-lines-note'),
+        mute: el('ui-mute'), muteIcon: el('ui-mute-icon'),
+        diag: el('ui-diag'), toasts: el('toasts'),
+        modalBoosters: el('modal-boosters'), modalOffline: el('modal-offline'),
+        offAway: el('ui-offline-away'), offAmount: el('ui-offline-amount'),
+        offFine: el('ui-offline-fine'), offCollect: el('ui-offline-collect'),
+        buyAmt: el('ui-buyamt')
+      };
+
+      this.buildProducts();
+      this.buildAxes();
+      this.buildBoosters();
+      this.bindUI();
+      this.bindState();
+      this.bindWorld();
+
+      this.dom.muteIcon.textContent = synth.muted ? '🔇' : '🔊';
+      this.dom.mute.setAttribute('aria-pressed', String(synth.muted));
+
+      this.setTab('products', true);
+      this.refresh(true);
+
+      if (state.offlineReport) this.showOffline(state.offlineReport);
+    }
+
+    /* ================================================================= */
+    /*  Construction                                                     */
+    /* ================================================================= */
+    buildProducts() {
+      const frag = document.createDocumentFragment();
+      P.PRODUCTS.forEach(p => {
+        const row = make('button', 'prow');
+        row.type = 'button';
+        row.dataset.id = p.id;
+        row.innerHTML =
+          '<span class="pswatch" style="--c:' + p.accent + '"></span>' +
+          '<span class="pmain">' +
+          '<span class="pname">' + p.name + '<em class="pstars"></em></span>' +
+          '<span class="psub"></span></span>' +
+          '<span class="pright"><span class="prate"></span>' +
+          '<span class="pcta"></span></span>';
+        frag.appendChild(row);
+        this._rows.product.set(p.id, {
+          row,
+          stars: row.querySelector('.pstars'),
+          sub: row.querySelector('.psub'),
+          rate: row.querySelector('.prate'),
+          cta: row.querySelector('.pcta')
+        });
+      });
+      this.dom.productRows.appendChild(frag);
+    }
+
+    buildAxes() {
+      const frag = document.createDocumentFragment();
+      P.AXES.forEach(a => {
+        const row = make('div', 'arow');
+        row.dataset.axis = a.id;
+        row.innerHTML =
+          '<div class="ahead"><span class="aname">' + a.name + '</span>' +
+          '<span class="alvl"></span></div>' +
+          '<div class="adesc">' + a.desc + '</div>' +
+          '<div class="ameter"><i></i></div>' +
+          '<div class="afoot"><span class="amult"></span>' +
+          '<button class="abuy" type="button"></button></div>';
+        frag.appendChild(row);
+        this._rows.axis.set(a.id, {
+          row,
+          lvl: row.querySelector('.alvl'),
+          meter: row.querySelector('.ameter i'),
+          mult: row.querySelector('.amult'),
+          buy: row.querySelector('.abuy')
+        });
+      });
+      this.dom.axisRows.appendChild(frag);
+    }
+
+    buildBoosters() {
+      const frag = document.createDocumentFragment();
+      P.BOOSTERS.forEach(b => {
+        const row = make('div', 'brow');
+        row.dataset.id = b.id;
+        row.style.setProperty('--c', b.tone);
+        row.innerHTML =
+          '<span class="bico">' + b.icon + '</span>' +
+          '<span class="bmain"><span class="bname">' + b.name + '</span>' +
+          '<span class="bdesc">' + b.desc + '</span>' +
+          '<span class="bmeter"><i></i></span></span>' +
+          '<button class="cta bcta" type="button"></button>';
+        frag.appendChild(row);
+        this._rows.booster.set(b.id, {
+          row,
+          meter: row.querySelector('.bmeter i'),
+          cta: row.querySelector('.bcta')
+        });
+      });
+      this.dom.boosterRows.appendChild(frag);
+    }
+
+    /* ================================================================= */
+    /*  Event listeners — UI → state                                     */
+    /* ================================================================= */
+    bindUI() {
+      // ---- tabs ----------------------------------------------------
+      this.dom.tabs.addEventListener('click', ev => {
+        const btn = ev.target.closest('.tab');
+        if (!btn) return;
+        this.synth.click();
+        const name = btn.dataset.tab;
+        if (name === 'boosters') { this.openModal('boosters'); return; }
+        this.setTab(this.tab === name ? null : name);
+      });
+
+      // ---- product rows: select, or unlock -------------------------
+      this.dom.productRows.addEventListener('click', ev => {
+        const row = ev.target.closest('.prow');
+        if (!row) return;
+        const id = row.dataset.id;
+        const st = this.state.unlockState(id);
+
+        if (st.unlocked) {
+          this.synth.click();
+          this.view.setLine(id);
+          this.setTab('factory');
+          this.refresh(true);
+          return;
+        }
+        if (st.canUnlock) {
+          this.state.unlockProduct(id);      // sound/toast via the event
+          return;
+        }
+        this.synth.error();
+        this.toast(st.levelMet
+          ? 'Need ' + Format.money(st.cost) + ' to open this line'
+          : 'Unlocks at level ' + st.levelRequired, 'warn');
+      });
+
+      // ---- buy-amount selector -------------------------------------
+      this.dom.buyAmt.addEventListener('click', ev => {
+        const btn = ev.target.closest('button');
+        if (!btn) return;
+        this.synth.click();
+        this.buyAmount = btn.dataset.amt === 'max' ? 'max' : +btn.dataset.amt;
+        [...this.dom.buyAmt.children].forEach(b =>
+          b.classList.toggle('on', b === btn));
+        this.refresh(true);
+      });
+
+      // ---- axis buy buttons ----------------------------------------
+      this.dom.axisRows.addEventListener('click', ev => {
+        const btn = ev.target.closest('.abuy');
+        if (!btn) return;
+        const axis = btn.closest('.arow').dataset.axis;
+        const id = this.state.selectedLine;
+        // quality is bought one star at a time, whatever the selector says
+        const amt = axis === 'quality' ? 1 : this.buyAmount;
+        const res = this.state.buyUpgrade(id, axis, amt);
+        if (!res.bought) {
+          this.synth.error();
+          const cost = this.state.upgradeCost(id, axis, amt === 'max' ? 1 : amt);
+          this.toast(isFinite(cost) ? 'Not enough cash' : 'Fully upgraded', 'warn');
+        }
+        this.refresh(true);
+      });
+
+      // ---- booster rows --------------------------------------------
+      this.dom.boosterRows.addEventListener('click', ev => {
+        const btn = ev.target.closest('.bcta');
+        if (!btn) return;
+        const id = btn.closest('.brow').dataset.id;
+        const res = this.state.activateBooster(id);
+        if (!res.ok) {
+          this.synth.error();
+          this.toast(res.reason === 'cooldown'
+            ? 'Ready in ' + Format.time(res.wait) : 'Unavailable', 'warn');
+        }
+        this.refreshBoosters();
+      });
+
+      // ---- modals ---------------------------------------------------
+      [this.dom.modalBoosters, this.dom.modalOffline].forEach(m => {
+        m.addEventListener('click', ev => {
+          if (ev.target === m || ev.target.closest('[data-close]')) {
+            this.synth.click();
+            this.closeModal(m);
+          }
+        });
+      });
+      this.dom.offCollect.addEventListener('click', () => {
+        this.synth.money();
+        this.closeModal(this.dom.modalOffline);
+      });
+
+      // ---- audio ----------------------------------------------------
+      this.dom.mute.addEventListener('click', () => {
+        const muted = this.synth.toggleMute();
+        this.dom.muteIcon.textContent = muted ? '🔇' : '🔊';
+        this.dom.mute.setAttribute('aria-pressed', String(muted));
+        if (!muted) this.synth.click();
+      });
+
+      // ---- keyboard --------------------------------------------------
+      global.addEventListener('keydown', ev => {
+        if (ev.target && /^(INPUT|TEXTAREA)$/.test(ev.target.tagName)) return;
+        const k = ev.key.toLowerCase();
+        if (k === '1') this.setTab('products');
+        else if (k === '2') this.setTab('factory');
+        else if (k === '3') this.openModal('boosters');
+        else if (k === 'm') this.dom.mute.click();
+        else if (k === 'd') this.dom.diag.hidden = !this.dom.diag.hidden;
+        else if (k === 'escape') {
+          this.closeModal(this.dom.modalBoosters);
+          this.closeModal(this.dom.modalOffline);
+          this.setTab(null);
+        }
+      });
+    }
+
+    /* ================================================================= */
+    /*  Event listeners — state → UI + audio                             */
+    /* ================================================================= */
+    bindState() {
+      const s = this.state;
+
+      s.on('upgrade', e => {
+        this.synth.upgrade();
+        const axis = P.getAxis(e.axis);
+        this.floatText(axis.short + ' +' + e.levels, '#ffc832');
+      });
+
+      s.on('unlock', e => {
+        this.synth.unlock();
+        this.toast('New line online — ' + e.product.name, 'good');
+        this.view.setLine(e.id);
+        this.setTab('factory');
+        this.refresh(true);
+      });
+
+      s.on('levelup', e => {
+        this.synth.levelup();
+        this.toast('Level ' + e.level, 'good');
+        this.dom.level.parentElement.classList.add('pulse');
+        setTimeout(() => this.dom.level.parentElement.classList.remove('pulse'), 900);
+      });
+
+      s.on('objective', e => {
+        this.synth.objective();
+        const r = e.reward || {};
+        this.toast('✓ ' + e.name +
+          (r.cash ? '  +' + Format.money(r.cash) : ''), 'good');
+        this.refresh(true);
+      });
+
+      s.on('booster', e => {
+        this.synth.upgrade();
+        if (e.granted) {
+          this.floatText('+' + Format.money(e.granted), '#7dffb0');
+          this.toast(e.def.name + ' — banked ' + Format.money(e.granted), 'good');
+        } else {
+          this.toast(e.def.name + ' active', 'good');
+        }
+        this.refreshBoosters();
+      });
+    }
+
+    /* ================================================================= */
+    /*  Event listeners — world → audio/UI                               */
+    /* ================================================================= */
+    bindWorld() {
+      const e = this.engine;
+
+      // a part landing on the belt
+      e.byTag('arm').forEach(arm => { arm.onPlace = () => this.synth.assembly(); });
+
+      // an item reaching the end of a line reads as money
+      e.byTag('conveyor').forEach(c => { c.onDeliver = () => this.synth.money(); });
+
+      // a truck pulling out ships the manifest
+      e.byTag('truck').forEach(t => {
+        t.onDepart = truck => {
+          this.synth.truck();
+          const value = this.state.incomePerMinute() * (truck.wait / 60);
+          if (value > 0) {
+            this.floaters.push({
+              gx: truck.px, gy: truck.laneY, gz: 1.9,
+              text: '+' + Format.money(value), color: '#7dffb0',
+              life: 0, max: 1.9
+            });
+          }
+        };
+      });
+
+      // tapping the floor collapses the sheet — the factory is the focus
+      e.onTileClick = () => { this.synth.click(); this.setTab(null); };
+
+      // claim the screen-space pass for floaters
+      e.onRender = (ctx, w, h) => this.drawFloaters(ctx, w, h);
+
+      // tick after the economy and the binding
+      const prev = e.onTick;
+      e.onTick = (dt, time) => {
+        if (prev) prev(dt, time);
+        this.tick(dt);
+      };
+    }
+
+    /* ================================================================= */
+    /*  Frame                                                            */
+    /* ================================================================= */
+    tick(dt) {
+      for (let i = this.floaters.length - 1; i >= 0; i--) {
+        const f = this.floaters[i];
+        f.life += dt;
+        f.gz += dt * 0.55;
+        if (f.life > f.max) this.floaters.splice(i, 1);
+      }
+      this._clock += dt;
+      if (this._clock >= 0.1) { this._clock = 0; this.refresh(false); }
+    }
+
+    /** Screen-space text rising off the world — drawn after the camera pass. */
+    drawFloaters(ctx, w, h) {
+      if (!this.floaters.length) return;
+      const iso = this.engine.iso, cam = this.engine.camera;
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.font = '700 13px "JetBrains Mono", ui-monospace, monospace';
+      for (const f of this.floaters) {
+        const k = f.life / f.max;
+        const x = iso.x(f.gx, f.gy) * cam.zoom + cam.x;
+        const y = iso.y(f.gx, f.gy, f.gz) * cam.zoom + cam.y;
+        if (x < -80 || x > w + 80 || y < -60 || y > h + 60) continue;
+        ctx.globalAlpha = k < 0.15 ? k / 0.15 : 1 - Math.pow((k - 0.15) / 0.85, 2);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(4,7,11,.85)';
+        ctx.strokeText(f.text, x, y);
+        ctx.fillStyle = f.color;
+        ctx.fillText(f.text, x, y);
+      }
+      ctx.restore();
+    }
+
+    /** Floater pinned to the middle of the view (for UI-origin events). */
+    floatText(text, color) {
+      const g = this.engine;
+      const c = g.iso.unproject((g.viewW / 2 - g.camera.x) / g.camera.zoom,
+        (g.viewH * 0.42 - g.camera.y) / g.camera.zoom, 0);
+      this.floaters.push({
+        gx: c.gx, gy: c.gy, gz: 0.6, text, color: color || '#ffc832',
+        life: 0, max: 1.5
+      });
+    }
+
+    /* ================================================================= */
+    /*  Refresh                                                          */
+    /* ================================================================= */
+    refresh(structural) {
+      const s = this.state;
+
+      this.dom.cash.textContent = Format.money(s.cash);
+      this.dom.rate.textContent = Format.rate(s.incomePerMinute());
+      this.dom.level.textContent = s.level;
+      this.dom.xp.style.width = (s.xpProgress() * 100).toFixed(1) + '%';
+
+      this.refreshObjective();
+      this.refreshProducts(structural);
+      this.refreshAxes();
+      this.refreshBoosters();
+      this.refreshBoostStrip();
+    }
+
+    refreshObjective() {
+      const o = this.state.activeObjectives(1)[0];
+      const d = this.dom;
+      if (!o) {
+        d.objName.textContent = 'All objectives complete';
+        d.objFill.style.width = '100%';
+        d.objCount.textContent = '';
+        d.objReward.textContent = '';
+        return;
+      }
+      d.objName.textContent = o.name + ' — ' + o.desc;
+      d.objFill.style.width = (o.progress * 100).toFixed(1) + '%';
+      d.objCount.textContent = o.label;
+      d.objReward.textContent = o.reward && o.reward.cash
+        ? '+' + Format.money(o.reward.cash) : '';
+    }
+
+    refreshProducts(structural) {
+      const s = this.state;
+      let unlocked = 0;
+      P.PRODUCTS.forEach(p => {
+        const r = this._rows.product.get(p.id);
+        const line = s.line(p.id);
+        const st = s.unlockState(p.id);
+        if (st.unlocked) unlocked++;
+
+        r.row.classList.toggle('locked', !st.unlocked);
+        r.row.classList.toggle('ready', !st.unlocked && st.canUnlock);
+        r.row.classList.toggle('active', s.selectedLine === p.id && st.unlocked);
+
+        if (st.unlocked) {
+          r.stars.textContent = Format.stars(line.quality);
+          r.sub.textContent = Format.num(s.throughputPerMinute(p.id)) + ' u/min · ' +
+            Format.money(s.valuePerUnit(p.id)) + '/unit';
+          r.rate.textContent = Format.rate(s.lineIncomePerMinute(p.id));
+          r.cta.textContent = s.selectedLine === p.id ? 'ACTIVE' : 'VIEW';
+        } else {
+          r.stars.textContent = '';
+          r.sub.textContent = p.blurb;
+          r.rate.textContent = st.levelMet ? Format.money(p.unlockCost) : '';
+          r.cta.textContent = st.levelMet
+            ? (st.affordable ? 'UNLOCK' : Format.money(p.unlockCost))
+            : 'LV ' + p.unlockLv;
+        }
+      });
+      this.dom.linesNote.textContent = unlocked + ' / ' + P.PRODUCTS.length + ' lines';
+      if (structural) this.refreshFactoryHead();
+    }
+
+    refreshFactoryHead() {
+      const s = this.state, id = s.selectedLine, p = s.product(id);
+      if (!p) return;
+      this.dom.factoryTitle.textContent = p.name;
+      this.dom.lineSummary.innerHTML =
+        '<span><b>' + Format.rate(s.lineIncomePerMinute(id)) + '</b>income</span>' +
+        '<span><b>' + Format.num(s.throughputPerMinute(id)) + '</b>units/min</span>' +
+        '<span><b>' + Format.money(s.valuePerUnit(id)) + '</b>per unit</span>' +
+        '<span><b>' + Format.num(s.line(id).shipped) + '</b>shipped</span>';
+    }
+
+    refreshAxes() {
+      const s = this.state, id = s.selectedLine;
+      const line = s.line(id);
+      if (!line) return;
+      this.refreshFactoryHead();
+
+      // share of the line's volume, so each bar means something
+      const vol = ['speed', 'supply', 'robot']
+        .reduce((t, a) => t + P.axisMultiplier(a, line[a]), 0);
+
+      P.AXES.forEach(a => {
+        const r = this._rows.axis.get(a.id);
+        const lvl = line[a.id];
+        const mult = P.axisMultiplier(a.id, lvl);
+        const stars = a.kind === 'stars';
+        const amt = stars ? 1 : this.buyAmount;
+
+        r.lvl.textContent = stars ? Format.stars(lvl) : 'Lv ' + lvl;
+        r.mult.textContent = stars ? '×' + mult.toFixed(2) + ' value'
+          : '×' + mult.toFixed(2) + ' rate';
+        r.meter.style.width = (stars ? lvl / 5 : mult / vol) * 100 + '%';
+
+        const maxed = lvl >= a.max;
+        let cost = Infinity, levels = 0;
+        if (!maxed) {
+          if (amt === 'max') {
+            const plan = P.axisAffordable(s.product(id), a.id, lvl, s.cash, a.max - lvl);
+            cost = plan.cost; levels = plan.levels;
+          } else {
+            const plan = P.axisBulkCost(s.product(id), a.id, lvl, amt);
+            cost = plan.cost; levels = plan.levels;
+          }
+        }
+        const afford = !maxed && levels > 0 && cost <= s.cash;
+        r.buy.textContent = maxed ? 'MAX'
+          : (amt === 'max'
+            ? (levels > 0 ? '+' + levels + '  ' + Format.money(cost) : 'MAX BUY')
+            : (stars ? '★ ' : '×' + amt + '  ') + Format.money(cost));
+        r.buy.classList.toggle('afford', afford);
+        r.buy.disabled = maxed;
+        r.row.classList.toggle('maxed', maxed);
+      });
+    }
+
+    refreshBoosters() {
+      this.state.boosterViews().forEach(v => {
+        const r = this._rows.booster.get(v.id);
+        if (!r) return;
+        r.row.classList.toggle('active', v.active);
+        r.row.classList.toggle('cooling', !v.active && v.cooling);
+        if (v.active) {
+          r.cta.textContent = Format.time(v.remaining);
+          r.meter.style.width = (v.activeProgress * 100).toFixed(1) + '%';
+        } else if (v.cooling) {
+          r.cta.textContent = Format.time(v.cooldown);
+          r.meter.style.width = (v.cooldownProgress * 100).toFixed(1) + '%';
+        } else {
+          r.cta.textContent = 'ACTIVATE';
+          r.meter.style.width = '100%';
+        }
+        r.cta.classList.toggle('afford', v.ready);
+      });
+    }
+
+    /** Pills under the header for whatever is currently running. */
+    refreshBoostStrip() {
+      const active = this.state.boosterViews().filter(v => v.active);
+      const strip = this.dom.boostStrip;
+      const key = active.map(v => v.id + Math.ceil(v.remaining)).join(',');
+      if (key === this._stripKey) return;
+      this._stripKey = key;
+      strip.innerHTML = '';
+      active.forEach(v => {
+        const pill = make('span', 'boost-pill',
+          v.def.icon + ' ' + v.def.name + ' <b>' + Format.time(v.remaining) + '</b>');
+        pill.style.setProperty('--c', v.def.tone);
+        strip.appendChild(pill);
+      });
+    }
+
+    /* ================================================================= */
+    /*  Chrome                                                           */
+    /* ================================================================= */
+    setTab(name, silent) {
+      this.tab = name;
+      const sheet = this.dom.sheet;
+      sheet.classList.toggle('open', !!name);
+      for (const k in this.dom.panels) this.dom.panels[k].hidden = (k !== name);
+      [...this.dom.tabs.children].forEach(b =>
+        b.classList.toggle('on', b.dataset.tab === name));
+      if (name && !silent) this.refresh(true);
+    }
+
+    openModal(which) {
+      const m = which === 'boosters' ? this.dom.modalBoosters : this.dom.modalOffline;
+      if (which === 'boosters') this.refreshBoosters();
+      m.hidden = false;
+      requestAnimationFrame(() => m.classList.add('in'));
+    }
+
+    closeModal(m) {
+      if (!m || m.hidden) return;
+      m.classList.remove('in');
+      setTimeout(() => { m.hidden = true; }, 180);
+    }
+
+    showOffline(report) {
+      this.dom.offAway.textContent = 'Your factory ran for ' + Format.time(report.away) +
+        ' while you were away.';
+      this.dom.offAmount.textContent = Format.money(report.earned);
+      this.dom.offFine.textContent =
+        Format.pct(report.efficiency) + ' of the ' +
+        Format.rate(report.ratePerMinute) + ' line rate' +
+        (report.capped ? ' · capped at ' + report.capHours + 'h' : '') +
+        ' · ' + Format.num(report.units) + ' units shipped';
+      this.openModal('offline');
+    }
+
+    toast(text, kind) {
+      const t = make('div', 'toast' + (kind ? ' ' + kind : ''), text);
+      this.dom.toasts.appendChild(t);
+      requestAnimationFrame(() => t.classList.add('in'));
+      setTimeout(() => {
+        t.classList.remove('in');
+        setTimeout(() => t.remove(), 260);
+      }, 2600);
+      while (this.dom.toasts.children.length > 4) this.dom.toasts.firstChild.remove();
+    }
+  }
+
+  /* =================================================================== */
+  function boot() {
+    const engine = global.GAME, state = global.STATE, view = global.VIEW;
+    if (!engine || !state || !view) {
+      console.error('[isofactory] UI booted before the game was ready');
+      return null;
+    }
+    const synth = new global.AUDIO.Synth();
+    synth.unlockOnGesture();
+
+    const ui = new GameUI(engine, state, view, synth);
+    global.UI = ui;
+    global.SYNTH = synth;
+    return ui;
+  }
+
+  global.GAMEUI = { GameUI, boot };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+})(window);
+</script>
+</body>
+</html>
