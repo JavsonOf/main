@@ -367,8 +367,8 @@
       ctx.fillStyle = opts.bg;
       ctx.beginPath();
       // roundRect is recent (Safari 16 / FF 112); fall back to a plain box
-      if (ctx.roundRect) ctx.roundRect(X - w / 2, Y - 8, w, 16, 4);
-      else ctx.rect(X - w / 2, Y - 8, w, 16);
+      const drawBox = typeof ctx.roundRect === 'function' ? ctx.roundRect.bind(ctx) : ctx.rect.bind(ctx);
+      drawBox(X - w / 2, Y - 8, w, 16, 4);
       ctx.fill();
     }
     ctx.fillStyle = opts.color || 'rgba(214,226,240,.8)';
