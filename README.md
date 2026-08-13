@@ -216,8 +216,18 @@ UI panels.
 
 ## Testing
 
-Driven headlessly with Playwright: 138 checks across the engine, the
+Driven headlessly with Playwright: 46 checks across the engine, the
 economy and the shell — projection round-trips, depth ordering, income
 identities, cost curves, offline payout at 3 h / 24 h-capped / clock-skew,
 corrupt saves, every UI interaction, and each audio cue synthesising.
-Balance is verified by simulating 30 days of greedy optimal play.
+
+```
+npm install
+npx playwright install chromium   # first time only
+npm test
+```
+
+`tests/static-server.js` hosts the repo root so `index.html` runs exactly
+as it does from the filesystem — no build step, no framework, one
+`page.evaluate()` away from the same `GAME` / `STATE` / `VIEW` / `UI` /
+`AUDIO` globals described above.

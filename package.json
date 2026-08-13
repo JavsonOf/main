@@ -4,7 +4,8 @@
   "description": "A browser game built on a hand-rolled HTML5 Canvas isometric renderer. No libraries, no build step — open `index.html`.",
   "main": "build.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "playwright test",
+    "build": "node build.js"
   },
   "repository": {
     "type": "git",
