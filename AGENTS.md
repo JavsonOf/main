@@ -1,6 +1,6 @@
 # Global Superpowers Bridge
 
-<!-- global-superpowers-bridge:v1 -->
+<!-- global-superpowers-bridge:v1.1 -->
 
 This repository participates in the `JavsonOf` Global Superpowers Bridge. Repository-specific instructions are authoritative when they are more specific than this global contract.
 
@@ -12,6 +12,14 @@ This repository participates in the `JavsonOf` Global Superpowers Bridge. Reposi
 - Each delegated implementation task should run in a fresh coding-agent session. Do not reuse an implementation session as the independent reviewer.
 - When Superpowers skills are available, use the relevant process skill before implementation: brainstorming for new behavior/design work, systematic debugging for bugs, test-driven development for features and fixes, and verification before claiming completion.
 - Follow repository-native tools, package managers, test commands, formatting, and conventions. Do not invent commands or dependencies.
+
+## GitHub Cloud-Agent Branch Ownership
+
+- A GitHub Copilot cloud-agent session may push only to its assigned working branch.
+- When `@copilot` is invoked from a pull-request comment, the writable branch is that pull request's head branch. In this mode, never ask the session to create or publish a different branch or a separate pull request; that branch escape can fail with HTTP 403 in `engine-tools-report_progress`.
+- Controller-first pattern: the controller creates the isolated branch and pull request, then invokes `@copilot` on that pull request with an instruction to modify THIS pull-request branch directly. The coding agent commits only to the assigned head branch.
+- If a genuinely separate branch or pull request is required, start a new task through GitHub Agents or a supported MCP agent-launch surface with the intended base branch. Do not branch-hop from a pull-request-comment session.
+- If GitHub creates a stacked agent pull request, the controller may preserve the agent-produced branch and create or retarget the final pull request through controller GitHub tooling. Do not instruct the coding agent to escape its assigned branch.
 
 ## Safety and Git Discipline
 
@@ -33,4 +41,4 @@ This repository participates in the `JavsonOf` Global Superpowers Bridge. Reposi
 - Convert blocking review findings into explicit fix work and re-review the fix. Do not silently rewrite the task requirements.
 - Do not merge merely because checks pass; merge remains an explicitly authorized action.
 
-<!-- /global-superpowers-bridge:v1 -->
+<!-- /global-superpowers-bridge:v1.1 -->
