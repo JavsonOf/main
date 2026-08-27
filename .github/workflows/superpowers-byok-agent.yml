@@ -1,0 +1,140 @@
+name: Global Superpowers Bridge BYOK Agent
+
+on:
+  push:
+    branches-ignore:
+      - main
+      - master
+    paths:
+      - .github/superpowers/byok-task.json
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: superpowers-byok-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  byok-agent:
+    if: ${{ !contains(github.event.head_commit.message, '[skip byok]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact task branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Validate BYOK task
+        id: task
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const task = JSON.parse(fs.readFileSync('.github/superpowers/byok-task.json', 'utf8'));
+          if (task.bridge !== 'v1.2') throw new Error('bridge must equal v1.2');
+          if (!['implement', 'review'].includes(task.mode)) throw new Error('invalid mode');
+          if (!Number.isInteger(task.pr_number) || task.pr_number <= 0) throw new Error('invalid pr_number');
+          if (typeof task.base_ref !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._\/-]*$/.test(task.base_ref)) throw new Error('invalid base_ref');
+          if (typeof task.task !== 'string' || !task.task.trim()) throw new Error('invalid task');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `mode=${task.mode}\npr_number=${task.pr_number}\nbase_ref=${task.base_ref}\nstart_sha=${process.env.GITHUB_SHA}\n`);
+          NODE
+
+      - name: Verify OpenAI provider secret exists
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo 'OPENAI_API_KEY Actions secret is not configured for this repository.' >&2
+            exit 1
+          fi
+
+      - name: Install Copilot SDK runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s\n' '.github/superpowers/node_modules/' >> .git/info/exclude
+          npm install --prefix .github/superpowers --no-save --package-lock=false @github/copilot-sdk
+
+      - name: Run BYOK agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          SUPERPOWERS_BYOK_MODEL: ${{ vars.SUPERPOWERS_BYOK_MODEL }}
+          BYOK_REVIEW_OUTPUT: ${{ runner.temp }}/superpowers-byok-review.md
+        run: node .github/superpowers/byok-runner.mjs
+
+      - name: Guard agent-owned Git history and Bridge files
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ steps.task.outputs.start_sha }}" || {
+            echo 'BYOK agent created a local commit; refusing wrapper push.' >&2
+            exit 1
+          }
+          git diff --exit-code -- .github/superpowers/byok-runner.mjs
+          git diff --exit-code -- .github/superpowers/byok-policy.mjs
+          git diff --exit-code -- .github/superpowers/byok-policy.test.mjs
+          git diff --exit-code -- .github/workflows/superpowers-byok-agent.yml
+          git diff --exit-code -- AGENTS.md
+          git diff --exit-code -- .github/copilot-instructions.md
+
+      - name: Require implementation changes
+        if: ${{ steps.task.outputs.mode == 'implement' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- . ':(exclude).github/superpowers/byok-task.json' && \
+             [ -z "$(git ls-files --others --exclude-standard | grep -v '^\.github/superpowers/node_modules/' || true)" ]; then
+            echo 'BYOK implementation produced no repository changes.' >&2
+            exit 1
+          fi
+
+      - name: Clean trigger and commit wrapper-owned result
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/superpowers/byok-task.json
+          git add -A
+          git reset -- .github/superpowers/node_modules 2>/dev/null || true
+          git config user.name 'global-superpowers-byok[bot]'
+          git config user.email 'global-superpowers-byok[bot]@users.noreply.github.com'
+          git commit -m "chore(agent): apply BYOK ${MODE} result [skip byok]"
+        env:
+          MODE: ${{ steps.task.outputs.mode }}
+
+      - name: Push same PR branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Post BYOK independent review
+        if: ${{ steps.task.outputs.mode == 'review' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.task.outputs.pr_number }}
+          REVIEW_FILE: ${{ runner.temp }}/superpowers-byok-review.md
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo '## Global Superpowers Bridge v1.2 — BYOK Independent Review'
+            echo
+            cat "$REVIEW_FILE"
+          } > "${RUNNER_TEMP}/superpowers-byok-review-comment.md"
+          gh pr comment "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --body-file "${RUNNER_TEMP}/superpowers-byok-review-comment.md"
