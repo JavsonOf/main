@@ -68,7 +68,7 @@ function getShellText(input) {
 }
 
 function looksLikeEditTool(name) {
-  return /(^|[_-])(edit|write|apply.?patch|delete)([_-]|$)/i.test(name) || ['edit', 'write', 'write_file', 'apply_patch'].includes(name);
+  return /(^|[_-])(edit|write|create|apply.?patch|delete)([_-]|$)/i.test(name) || ['edit', 'write', 'write_file', 'create', 'create_file', 'apply_patch'].includes(name);
 }
 
 function looksLikeShellTool(name) {
