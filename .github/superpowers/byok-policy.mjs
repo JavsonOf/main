@@ -46,10 +46,23 @@ export function validateTask(input) {
   });
 }
 
+function normalizeRepoPath(candidate) {
+  const raw = candidate.replaceAll('\\', '/');
+  const absolute = raw.startsWith('/');
+  const parts = [];
+  for (const segment of raw.split('/')) {
+    if (!segment || segment === '.') continue;
+    if (segment === '..') parts.pop();
+    else parts.push(segment);
+  }
+  return { normalized: parts.join('/'), absolute };
+}
+
 export function isProtectedPath(candidate) {
   if (typeof candidate !== 'string') return false;
-  const normalized = candidate.replaceAll('\\', '/').replace(/^\.\//, '');
-  return PROTECTED_PATHS.has(normalized);
+  const { normalized, absolute } = normalizeRepoPath(candidate);
+  if (PROTECTED_PATHS.has(normalized)) return true;
+  return absolute && [...PROTECTED_PATHS].some((protectedPath) => normalized.endsWith(`/${protectedPath}`));
 }
 
 function allStrings(value, output = []) {
@@ -75,8 +88,50 @@ function looksLikeShellTool(name) {
   return /bash|shell|execute|powershell/i.test(name);
 }
 
-function protectedPathMention(strings) {
-  return strings.some((value) => [...PROTECTED_PATHS].some((path) => value.replaceAll('\\', '/').includes(path)));
+const TARGET_PATH_KEYS = new Set(['path', 'filepath', 'filename', 'target', 'targetpath']);
+
+function collectTargetPaths(value, output = []) {
+  if (!value || typeof value !== 'object') return output;
+  for (const [key, item] of Object.entries(value)) {
+    const normalizedKey = key.replaceAll('_', '').replaceAll('-', '').toLowerCase();
+    if (TARGET_PATH_KEYS.has(normalizedKey)) {
+      if (typeof item === 'string') output.push(item);
+      else if (Array.isArray(item)) output.push(...item.filter((entry) => typeof entry === 'string'));
+    }
+    if (item && typeof item === 'object') collectTargetPaths(item, output);
+  }
+  return output;
+}
+
+function collectPatchTargets(toolArgs) {
+  const patch = typeof toolArgs?.patch === 'string' ? toolArgs.patch : '';
+  const targets = [];
+  for (const line of patch.split(/\r?\n/)) {
+    let match = line.match(/^\*\*\* (?:Update|Add|Delete) File:\s+(.+)$/);
+    if (match) {
+      targets.push(match[1]);
+      continue;
+    }
+    match = line.match(/^(?:---|\+\+\+)\s+(?:[ab]\/)?(.+)$/);
+    if (match && match[1] !== '/dev/null') targets.push(match[1]);
+    match = line.match(/^diff --git a\/(.+) b\/(.+)$/);
+    if (match) targets.push(match[1], match[2]);
+  }
+  return targets;
+}
+
+function targetsProtected(toolArgs) {
+  const candidates = [...collectTargetPaths(toolArgs), ...collectPatchTargets(toolArgs)];
+  return candidates.some((candidate) => isProtectedPath(candidate));
+}
+
+function shellMentionsProtectedPath(command) {
+  const normalized = command.replaceAll('\\', '/');
+  return [...PROTECTED_PATHS].some((protectedPath) => normalized.includes(protectedPath));
+}
+
+function reviewHasShellControl(command) {
+  return /[\r\n;<>`]|&&|\|\||(^|[^\|])\|([^\|]|$)|\$\(/.test(command);
 }
 
 const GIT_READ_ONLY = new Set(['status', 'diff', 'show', 'log', 'grep', 'rev-parse', 'merge-base', 'ls-files', 'blame', 'describe']);
@@ -96,13 +151,12 @@ const REVIEW_SAFE_SHELL = [
 
 export function toolDecision(input, mode) {
   const toolName = String(input?.toolName ?? '');
-  const strings = allStrings(input?.toolArgs ?? {});
 
   if (looksLikeEditTool(toolName)) {
     if (mode === 'review') {
       return { permissionDecision: 'deny', permissionDecisionReason: 'BYOK review mode is read-only.' };
     }
-    if (protectedPathMention(strings)) {
+    if (targetsProtected(input?.toolArgs ?? {})) {
       return { permissionDecision: 'deny', permissionDecisionReason: 'Bridge governance/runtime files are controller-owned.' };
     }
     return { permissionDecision: 'allow' };
@@ -117,7 +171,10 @@ export function toolDecision(input, mode) {
     if (DANGEROUS_SHELL.some((pattern) => pattern.test(command))) {
       return { permissionDecision: 'deny', permissionDecisionReason: 'Command is outside the BYOK agent permission boundary.' };
     }
-    if (protectedPathMention([command]) && /(>|tee\b|sed\s+-i\b|perl\s+-pi\b|\b(cp|mv|rm|truncate)\b)/i.test(command)) {
+    if (mode === 'review' && reviewHasShellControl(command)) {
+      return { permissionDecision: 'deny', permissionDecisionReason: 'Review mode forbids shell chaining, redirection, pipes, and command substitution.' };
+    }
+    if (shellMentionsProtectedPath(command) && /(>|tee\b|sed\s+-i\b|perl\s+-pi\b|\b(cp|mv|rm|truncate)\b)/i.test(command)) {
       return { permissionDecision: 'deny', permissionDecisionReason: 'Bridge governance/runtime files are controller-owned.' };
     }
     if (mode === 'review' && !REVIEW_SAFE_SHELL.some((pattern) => pattern.test(command.trim()))) {
