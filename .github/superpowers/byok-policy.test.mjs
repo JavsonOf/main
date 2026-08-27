@@ -41,7 +41,7 @@ test('protects Bridge runtime and governance files', () => {
 });
 
 test('review mode denies editing tools', () => {
-  for (const toolName of ['edit', 'write', 'write_file', 'apply_patch']) {
+  for (const toolName of ['edit', 'write', 'write_file', 'create', 'create_file', 'apply_patch']) {
     assert.equal(toolDecision({ toolName, toolArgs: {} }, 'review').permissionDecision, 'deny');
   }
 });
@@ -77,7 +77,7 @@ test('implementation mode allows ordinary repository-local commands', () => {
 
 test('denies attempts to edit protected paths', () => {
   const decision = toolDecision({
-    toolName: 'edit',
+    toolName: 'create',
     toolArgs: { path: '.github/superpowers/byok-runner.mjs' },
   }, 'implement');
   assert.equal(decision.permissionDecision, 'deny');
