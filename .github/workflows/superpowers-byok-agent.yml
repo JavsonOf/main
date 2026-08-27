@@ -90,6 +90,20 @@ jobs:
           git diff --exit-code -- AGENTS.md
           git diff --exit-code -- .github/copilot-instructions.md
 
+      - name: Enforce read-only review working tree
+        if: ${{ steps.task.outputs.mode == 'review' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- . || ! git diff --cached --quiet -- .; then
+            echo 'BYOK review modified tracked repository files; refusing to commit or push.' >&2
+            exit 1
+          fi
+          if [ -n "$(git ls-files --others --exclude-standard)" ]; then
+            echo 'BYOK review created untracked repository files; refusing to commit or push.' >&2
+            exit 1
+          fi
+
       - name: Require implementation changes
         if: ${{ steps.task.outputs.mode == 'implement' }}
         shell: bash
