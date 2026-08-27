@@ -106,8 +106,17 @@ jobs:
         run: |
           set -euo pipefail
           rm -f .github/superpowers/byok-task.json
-          git add -A
-          git reset -- .github/superpowers/node_modules 2>/dev/null || true
+
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              .github/superpowers/node_modules/*) continue ;;
+            esac
+            git add -- "$path"
+          done < <(
+            git diff --name-only -z
+            git ls-files --others --exclude-standard -z
+          )
+
           git config user.name 'global-superpowers-byok[bot]'
           git config user.email 'global-superpowers-byok[bot]@users.noreply.github.com'
           git commit -m "chore(agent): apply BYOK ${MODE} result [skip byok]"
