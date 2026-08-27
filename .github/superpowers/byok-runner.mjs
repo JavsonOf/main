@@ -44,7 +44,7 @@ try {
     workingDirectory: process.cwd(),
     availableTools: task.mode === 'review'
       ? ['view', 'grep', 'glob', 'bash']
-      : ['view', 'grep', 'glob', 'edit', 'bash'],
+      : ['view', 'grep', 'glob', 'edit', 'create', 'apply_patch', 'bash'],
     hooks: {
       onPreToolUse: async (input) => toolDecision(input, task.mode),
     },
