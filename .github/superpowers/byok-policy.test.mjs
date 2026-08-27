@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { validateTask, isProtectedPath, toolDecision, buildPrompt } from './byok-policy.mjs';
 
 const validTask = {
@@ -81,6 +82,34 @@ test('denies attempts to edit protected paths', () => {
     toolArgs: { path: '.github/superpowers/byok-runner.mjs' },
   }, 'implement');
   assert.equal(decision.permissionDecision, 'deny');
+});
+
+test('allows safe file content that merely mentions a protected filename', () => {
+  const decision = toolDecision({
+    toolName: 'create',
+    toolArgs: { path: 'docs/bridge.md', content: 'Read AGENTS.md before editing.' },
+  }, 'implement');
+  assert.equal(decision.permissionDecision, 'allow');
+});
+
+test('review mode rejects shell command chaining and redirection', () => {
+  const blocked = [
+    'git diff; rm -rf src',
+    'git diff && rm -rf src',
+    'git diff | tee out.txt',
+    'git diff > out.txt',
+    'git diff\nrm -rf src',
+  ];
+  for (const command of blocked) {
+    const decision = toolDecision({ toolName: 'bash', toolArgs: { command } }, 'review');
+    assert.equal(decision.permissionDecision, 'deny', command);
+  }
+});
+
+test('workflow has a hard clean-tree guard for review and avoids git add -A', () => {
+  const workflow = fs.readFileSync(new URL('../workflows/superpowers-byok-agent.yml', import.meta.url), 'utf8');
+  assert.match(workflow, /Enforce read-only review working tree/);
+  assert.doesNotMatch(workflow, /git add -A/);
 });
 
 test('buildPrompt includes mode, base ref, acceptance, and immutable safety rules', () => {
