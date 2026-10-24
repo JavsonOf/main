@@ -16,5 +16,9 @@ npx rea-agents setup
 npx rea-agents setup --yes --client claude_code
 ```
 
-`.mcp.json` in this folder registers the `rea` MCP server (pinned to `rea-agents@6.7.0`) for
-Claude Code sessions started from `Rea/`, so it works without running setup first.
+`.mcp.json` in this folder registers the `rea` MCP server (`rea mcp`) for Claude Code sessions
+started from `Rea/`. It needs the CLI installed globally:
+
+```bash
+npm install -g rea-agents@6.7.0
+```
